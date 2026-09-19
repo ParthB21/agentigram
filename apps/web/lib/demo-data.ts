@@ -84,7 +84,7 @@ export const contract = {
   participants: ['Backend', 'Payments'],
   version: 1,
   status: 'compiled',
-  check: '.clankergram/contracts/user-id-v1.ts',
+  check: '.agentigram/contracts/user-id-v1.ts',
 };
 
 export const modelRows = [
@@ -159,7 +159,7 @@ const actors = {
   payments: { engineerId: 'sam', sessionId: 'payments', kind: 'agent' as const },
   frontend: { engineerId: 'jules', sessionId: 'frontend', kind: 'agent' as const },
   security: { engineerId: 'rin', sessionId: 'security', kind: 'agent' as const },
-  system: { engineerId: 'clankergram', kind: 'system' as const },
+  system: { engineerId: 'agentigram', kind: 'system' as const },
 };
 
 function event(

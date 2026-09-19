@@ -1,3 +1,5 @@
+import type { Event } from '@clankergram/protocol';
+
 const DEFAULT_PRIOR = { alpha: 1, beta: 1 };
 const DEFAULT_ITERATIONS = 4_000;
 const MIN_WINNER_SAMPLES = 5;
@@ -18,6 +20,35 @@ export type ThompsonOptions = {
   rng: () => number;
 };
 export type RouterRecommendation = { model: string; score: number; reason: string };
+export type TaskCategory =
+  | 'FEATURE'
+  | 'BUG_FIX'
+  | 'REFACTOR'
+  | 'TESTING'
+  | 'FRONTEND'
+  | 'BACKEND'
+  | 'DATABASE'
+  | 'SECURITY'
+  | 'DOCUMENTATION'
+  | 'DEVOPS';
+export type TaskOutcome = {
+  sessionId: string;
+  model?: string;
+  task?: string;
+  category: TaskCategory;
+  difficulty: 'LOW' | 'MEDIUM' | 'HIGH';
+  verifiedSuccess: boolean;
+  firstPassCi: boolean | null;
+  humanInterventions: number;
+  rework: number;
+  collisionsIntroduced: number;
+  collisionsResolved: number;
+  durationMs?: number;
+  leaseBlockedMs: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+};
 
 export class StatisticsError extends Error {
   constructor(message: string) {
@@ -180,6 +211,109 @@ export function thompsonRecommendation(
 
 export function thompsonPick(candidates: RouterCandidate[], options: ThompsonOptions): string {
   return thompsonRecommendation(candidates, options).model;
+}
+
+/** Derive auditable model outcomes from the authoritative event log only. */
+export function deriveTaskOutcomes(events: Event[]): TaskOutcome[] {
+  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+  const sessions = new Map<
+    string,
+    TaskOutcome & { startedAt?: number; blockedAt?: number; firstCiSeen: boolean }
+  >();
+  const get = (sessionId: string) => {
+    let value = sessions.get(sessionId);
+    if (!value) {
+      value = {
+        sessionId,
+        category: 'FEATURE',
+        difficulty: 'MEDIUM',
+        verifiedSuccess: false,
+        firstPassCi: null,
+        humanInterventions: 0,
+        rework: 0,
+        collisionsIntroduced: 0,
+        collisionsResolved: 0,
+        leaseBlockedMs: 0,
+        firstCiSeen: false,
+      };
+      sessions.set(sessionId, value);
+    }
+    return value;
+  };
+  for (const event of ordered) {
+    const actorSession = event.actor.sessionId;
+    const at = Date.parse(event.ts);
+    if (event.payload.type === 'SESSION_STARTED') {
+      const outcome = get(event.payload.sessionId);
+      outcome.model = event.payload.model;
+      outcome.task = event.payload.task;
+      outcome.category = categorizeTask(event.payload.task ?? '');
+      outcome.difficulty = difficultyFor(event.payload.task ?? '');
+      if (Number.isFinite(at)) outcome.startedAt = at;
+    } else if (event.payload.type === 'CI_RESULT' && event.payload.sessionId) {
+      const outcome = get(event.payload.sessionId);
+      if (!outcome.firstCiSeen) {
+        outcome.firstPassCi = event.payload.status === 'pass';
+        outcome.firstCiSeen = true;
+      } else if (event.payload.status === 'fail') outcome.rework += 1;
+    } else if (event.payload.type === 'RUN_VERIFIED') {
+      const outcome = get(event.payload.sessionId);
+      outcome.verifiedSuccess = true;
+      if (event.payload.durationMs !== undefined)
+        outcome.durationMs = Math.max(0, event.payload.durationMs - outcome.leaseBlockedMs);
+      else if (outcome.startedAt !== undefined && Number.isFinite(at))
+        outcome.durationMs = Math.max(0, at - outcome.startedAt - outcome.leaseBlockedMs);
+    } else if (event.payload.type === 'COLLISION') {
+      get(event.payload.writerSession).collisionsIntroduced += 1;
+    } else if (event.payload.type === 'CONTRACT_RESULT' && event.payload.status === 'pass') {
+      if (actorSession) get(actorSession).collisionsResolved += 1;
+    } else if (event.payload.type === 'LEASE_DENIED' && actorSession && Number.isFinite(at)) {
+      get(actorSession).blockedAt ??= at;
+    } else if (
+      (event.payload.type === 'LEASE_GRANTED' || event.payload.type === 'LEASE_RELEASED') &&
+      actorSession
+    ) {
+      const outcome = get(actorSession);
+      if (outcome.blockedAt !== undefined && Number.isFinite(at)) {
+        outcome.leaseBlockedMs += Math.max(0, at - outcome.blockedAt);
+        outcome.blockedAt = undefined;
+      }
+    } else if (event.payload.type === 'USAGE' && actorSession) {
+      const outcome = get(actorSession);
+      outcome.inputTokens = (outcome.inputTokens ?? 0) + (event.payload.inputTokens ?? 0);
+      outcome.outputTokens = (outcome.outputTokens ?? 0) + (event.payload.outputTokens ?? 0);
+      outcome.costUsd = (outcome.costUsd ?? 0) + (event.payload.costUsd ?? 0);
+    }
+    if (event.actor.kind === 'human' && actorSession) get(actorSession).humanInterventions += 1;
+  }
+  return [...sessions.values()]
+    .map(
+      ({ startedAt: _startedAt, blockedAt: _blockedAt, firstCiSeen: _firstCiSeen, ...outcome }) =>
+        outcome,
+    )
+    .sort((a, b) => a.sessionId.localeCompare(b.sessionId));
+}
+
+export function categorizeTask(text: string): TaskCategory {
+  const value = text.toLowerCase();
+  if (/security|auth|permission|vulnerab/.test(value)) return 'SECURITY';
+  if (/test|coverage|spec\b/.test(value)) return 'TESTING';
+  if (/ui|frontend|css|react|component/.test(value)) return 'FRONTEND';
+  if (/database|schema|sql|migration/.test(value)) return 'DATABASE';
+  if (/deploy|ci|pipeline|docker|infra/.test(value)) return 'DEVOPS';
+  if (/doc|readme/.test(value)) return 'DOCUMENTATION';
+  if (/bug|fix|repair|regression/.test(value)) return 'BUG_FIX';
+  if (/refactor|cleanup|rename/.test(value)) return 'REFACTOR';
+  if (/api|backend|server|service/.test(value)) return 'BACKEND';
+  return 'FEATURE';
+}
+
+export function difficultyFor(text: string): 'LOW' | 'MEDIUM' | 'HIGH' {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  if (/architecture|migration|distributed|security|rewrite/i.test(text) || words > 24)
+    return 'HIGH';
+  if (words <= 5) return 'LOW';
+  return 'MEDIUM';
 }
 
 export function seededRandom(seed: number): () => number {

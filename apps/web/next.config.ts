@@ -1,7 +1,7 @@
 import type { NextConfig } from 'next';
 
 const githubPagesEnabled = process.env.GITHUB_PAGES === 'true';
-const githubPagesBasePath = '/clankergram';
+const githubPagesBasePath = '/agentigram';
 
 const config: NextConfig = {
   ...(githubPagesEnabled
@@ -13,7 +13,13 @@ const config: NextConfig = {
       }
     : {}),
   // Workspace packages ship TypeScript source (see docs/decisions.md), so Next must compile them.
-  transpilePackages: ['@clankergram/protocol'],
+  transpilePackages: [
+    '@clankergram/protocol',
+    '@clankergram/reducer',
+    '@clankergram/personas',
+    '@clankergram/league',
+    '@clankergram/stats',
+  ],
   // Our packages use NodeNext-style `./x.js` imports that point at `./x.ts`. Turbopack does not
   // map that yet, so the app builds with webpack (`next dev/build --webpack`) plus this alias.
   webpack(config) {

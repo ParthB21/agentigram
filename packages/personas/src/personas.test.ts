@@ -45,7 +45,7 @@ describe('@clankergram/personas', () => {
     ]);
   });
 
-  it('rejects generated lines not linked to an input event', async () => {
+  it('falls back when generated lines are not linked to an input event', async () => {
     const collision = event(4, {
       type: 'COLLISION',
       collisionId: 'c1',
@@ -58,6 +58,12 @@ describe('@clankergram/personas', () => {
     const lines = await render([collision], DEFAULT_PERSONAS, {
       notableRenderer: async () => [{ speaker: 'Backend', text: 'invented', seq: 999 }],
     });
-    expect(lines).toEqual([]);
+    expect(lines).toEqual([
+      {
+        speaker: 'Backend',
+        text: 'semantic collision on the affected interface. break',
+        seq: 4,
+      },
+    ]);
   });
 });

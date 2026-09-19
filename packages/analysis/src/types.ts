@@ -45,11 +45,23 @@ export type ResolvedIntent = {
 };
 
 /** Facts another daemon published: what it intends or changed. */
-export type RemoteFacts = { writerSession: string; changes: ApiChange[] };
+export type RemoteFacts = {
+  writerSession: string;
+  /** API changes are semantic facts. Intent-only callers may provide `symbols`/`files`. */
+  changes?: ApiChange[];
+  symbols?: SymbolKey[];
+  files?: string[];
+};
+
+export type ImpactReference = { symbol: SymbolKey; path: string; line: number };
 
 export type ImpactAssessment = {
   collides: boolean;
   tier: CollisionTier | null;
   symbols: SymbolKey[];
   confidence: number;
+  /** Exact local evidence suitable for the collision detail shown to humans and agents. */
+  references: ImpactReference[];
+  files: string[];
+  detail: string;
 };

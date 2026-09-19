@@ -9,7 +9,7 @@ export default function Home() {
           <i></i>
           <i></i>
         </span>
-        Clankergram
+        Agentigram
       </div>
       <section>
         <p>Coordination for coding agents</p>
@@ -19,8 +19,8 @@ export default function Home() {
           before it lands.
         </h1>
         <span>
-          Clankergram watches the seams between agents, gets them to negotiate a contract, and
-          proves the combined work.
+          Agentigram watches the seams between agents, gets them to negotiate a contract, and proves
+          the combined work.
         </span>
         <Link href="/team/hackathon">Open the hackathon room</Link>
       </section>

@@ -51,7 +51,12 @@ export class RepoHost {
   /** Repo file (not a lib, not node_modules, not generated). */
   isRepoFile(abs: string): boolean {
     const r = this.rel(abs);
-    return !r.startsWith('..') && !r.includes('node_modules/') && !r.startsWith('.clankergram/');
+    return (
+      !r.startsWith('..') &&
+      !r.includes('node_modules/') &&
+      !r.startsWith('.clankergram/') &&
+      !r.startsWith('.agentigram/')
+    );
   }
 
   /** Replace a file's contents (creating it if new), or delete it with `null`. */

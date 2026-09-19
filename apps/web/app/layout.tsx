@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata = {
-  title: { default: 'Clankergram', template: '%s · Clankergram' },
+  title: { default: 'Agentigram', template: '%s · Agentigram' },
   description: 'The multiplayer control room for engineering teams and their coding agents.',
 };
 

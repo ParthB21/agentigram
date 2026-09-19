@@ -28,6 +28,10 @@ export type LeagueBook = {
   holdings: Record<string, Record<string, Record<string, number>>>;
   trades: TradeRecord[];
   flaggedPositions: string[];
+  voidedPositions: string[];
+  owners: Record<string, string>;
+  closingForecasts: Record<string, Record<string, Record<string, number>>>;
+  resolutions: Record<string, { outcome: string; seq: number }>;
 };
 
 export class LeagueError extends Error {
@@ -120,6 +124,11 @@ export function resolve(market: MarketState, outcome: string, _resolutionSeq: nu
   return { ...market, status: 'resolved', resolvedOutcome: outcome };
 }
 
+export function closeMarket(market: MarketState): MarketState {
+  if (market.status !== 'open') return market;
+  return { ...market, status: 'closed' };
+}
+
 export function voidMarket(market: MarketState, _reason: string): MarketState {
   if (market.status === 'resolved') {
     throw new LeagueError('MARKET_CLOSED', 'A resolved market cannot be voided');
@@ -127,13 +136,21 @@ export function voidMarket(market: MarketState, _reason: string): MarketState {
   return { ...market, status: 'void' };
 }
 
-export function createLeague(memberIds: string[], markets: MarketState[] = []): LeagueBook {
+export function createLeague(
+  memberIds: string[],
+  markets: MarketState[] = [],
+  owners: Record<string, string> = {},
+): LeagueBook {
   return {
     markets: Object.fromEntries(markets.map((market) => [market.marketId, market])),
     balances: Object.fromEntries(memberIds.map((memberId) => [memberId, STARTING_POINTS])),
     holdings: {},
     trades: [],
     flaggedPositions: [],
+    voidedPositions: [],
+    owners: { ...owners },
+    closingForecasts: {},
+    resolutions: {},
   };
 }
 
@@ -157,7 +174,11 @@ export function placeTrade(
   }
   const memberHoldings = book.holdings[memberId] ?? {};
   const marketHoldings = memberHoldings[marketId] ?? {};
-  const flag = market.subjectSession === memberId ? `${memberId}:${marketId}` : undefined;
+  const flag =
+    market.subjectSession &&
+    (market.subjectSession === memberId || book.owners[market.subjectSession] === memberId)
+      ? `${memberId}:${marketId}`
+      : undefined;
   return {
     ...book,
     markets: { ...book.markets, [marketId]: result.market },
@@ -194,6 +215,49 @@ export function settleMarket(
     ...book,
     balances,
     markets: { ...book.markets, [marketId]: resolve(market, outcome, resolutionSeq) },
+    resolutions: { ...book.resolutions, [marketId]: { outcome, seq: resolutionSeq } },
+  };
+}
+
+export function closeLeagueMarket(book: LeagueBook, marketId: string): LeagueBook {
+  const market = book.markets[marketId];
+  if (!market) throw new LeagueError('INVALID_MARKET', `Unknown market: ${marketId}`);
+  const forecasts: Record<string, Record<string, number>> = {};
+  for (const memberId of Object.keys(book.balances)) {
+    const memberTrades = book.trades.filter(
+      (trade) => trade.marketId === marketId && trade.memberId === memberId,
+    );
+    if (memberTrades.length > 0) forecasts[memberId] = prices(market);
+  }
+  return {
+    ...book,
+    markets: { ...book.markets, [marketId]: closeMarket(market) },
+    closingForecasts: { ...book.closingForecasts, [marketId]: forecasts },
+  };
+}
+
+/** Refund only a member's own-agent position after a post-close human intervention. */
+export function voidFlaggedPosition(
+  book: LeagueBook,
+  memberId: string,
+  marketId: string,
+): LeagueBook {
+  const key = `${memberId}:${marketId}`;
+  if (!book.flaggedPositions.includes(key) || book.voidedPositions.includes(key)) return book;
+  const refund = book.trades
+    .filter((trade) => trade.marketId === marketId && trade.memberId === memberId)
+    .reduce((sum, trade) => sum + trade.cost, 0);
+  return {
+    ...book,
+    balances: {
+      ...book.balances,
+      [memberId]: (book.balances[memberId] ?? STARTING_POINTS) + refund,
+    },
+    holdings: {
+      ...book.holdings,
+      [memberId]: { ...(book.holdings[memberId] ?? {}), [marketId]: {} },
+    },
+    voidedPositions: [...book.voidedPositions, key],
   };
 }
 
@@ -263,6 +327,78 @@ export function autoOpenMarkets(event: Event): MarketSpec[] {
     default:
       return [];
   }
+}
+
+export function marketForPush(commit: string, at: string): MarketSpec {
+  return {
+    marketId: `ci-${commit}`,
+    kind: 'binary',
+    question: `Will CI pass for ${commit.slice(0, 8)}?`,
+    outcomes: ['pass', 'fail'],
+    closesAt: at,
+  };
+}
+
+/** Pure automatic closing/settlement from authoritative verification events. */
+export function applyVerificationEvent(book: LeagueBook, event: Event): LeagueBook {
+  let next = closeDueMarkets(book, event.ts);
+  const payload = event.payload;
+  if (payload.type === 'CI_RESULT') {
+    const id = `ci-${payload.commit}`;
+    if (next.markets[id])
+      next = settleMarket(closeLeagueMarket(next, id), id, payload.status, event.seq);
+  } else if (payload.type === 'DUEL_RESULT') {
+    const id = `duel-${payload.duelId}`;
+    if (next.markets[id]) {
+      next = payload.winnerSession
+        ? settleMarket(closeLeagueMarket(next, id), id, payload.winnerSession, event.seq)
+        : voidAndRefund(next, id, payload.reason);
+    }
+  } else if (payload.type === 'RUN_VERIFIED') {
+    const id = `time-${payload.sessionId}`;
+    const market = next.markets[id];
+    if (market && payload.durationMs !== undefined) {
+      const minutes = payload.durationMs / 60_000;
+      const outcome = minutes < 15 ? '<15m' : minutes <= 30 ? '15â€“30m' : '>30m';
+      next = settleMarket(closeLeagueMarket(next, id), id, outcome, event.seq);
+    }
+  }
+  return next;
+}
+
+export function closeDueMarkets(book: LeagueBook, at: string): LeagueBook {
+  const timestamp = Date.parse(at);
+  if (!Number.isFinite(timestamp)) return book;
+  let next = book;
+  for (const market of Object.values(next.markets)) {
+    if (market.status === 'open' && Date.parse(market.closesAt) <= timestamp)
+      next = closeLeagueMarket(next, market.marketId);
+  }
+  return next;
+}
+
+export function calibrationLeaderboard(
+  book: LeagueBook,
+): Array<{ memberId: string; score: number; samples: number }> {
+  return Object.keys(book.balances)
+    .map((memberId) => {
+      const scores = Object.entries(book.resolutions).flatMap(([marketId, resolution]) => {
+        const forecast = book.closingForecasts[marketId]?.[memberId];
+        return forecast ? [brierScore(forecast, resolution.outcome)] : [];
+      });
+      return {
+        memberId,
+        score: scores.length
+          ? scores.reduce((sum, score) => sum + score, 0) / scores.length
+          : Number.NaN,
+        samples: scores.length,
+      };
+    })
+    .sort(
+      (a, b) =>
+        (Number.isNaN(a.score) ? 1 : Number.isNaN(b.score) ? -1 : a.score - b.score) ||
+        a.memberId.localeCompare(b.memberId),
+    );
 }
 
 function assertOutcome(market: MarketState, outcome: string): void {

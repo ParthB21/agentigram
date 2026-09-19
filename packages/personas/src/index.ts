@@ -20,7 +20,17 @@ export type PersonaBatchRenderer = (
   events: Event[],
   cards: PersonaCard[],
 ) => Promise<PersonaLine[]>;
-export type RenderOptions = { notableRenderer?: PersonaBatchRenderer };
+export type RenderOptions = {
+  notableRenderer?: PersonaBatchRenderer;
+  /** Already-rendered event sequences, used by the worker's replay-safe dedupe cache. */
+  seenSequences?: ReadonlySet<number>;
+  maxLines?: number;
+};
+
+export type PrioritizedPersonaLine = PersonaLine & {
+  priority: 0 | 1 | 2 | 3;
+  replyTo?: string;
+};
 
 export const DEFAULT_PERSONAS: PersonaCard[] = [
   {
@@ -54,7 +64,10 @@ export async function render(
   personaCards: PersonaCard[],
   options: RenderOptions = {},
 ): Promise<PersonaLine[]> {
-  const ordered = [...eventsWindow].sort((left, right) => left.seq - right.seq);
+  const seen = options.seenSequences ?? new Set<number>();
+  const ordered = [...new Map(eventsWindow.map((event) => [event.seq, event])).values()]
+    .filter((event) => !seen.has(event.seq))
+    .sort((left, right) => left.seq - right.seq);
   const cards = personaCards.length > 0 ? personaCards : DEFAULT_PERSONAS;
   const notable = ordered.filter((event) => NOTABLE_TYPES.has(event.payload.type));
   const ordinary = ordered.filter((event) => !NOTABLE_TYPES.has(event.payload.type));
@@ -64,10 +77,80 @@ export async function render(
       .sort((left, right) => left.seq - right.seq)
       .map(safetyPass);
   }
-  const generated = await options.notableRenderer(notable, cards);
+  let generated: PersonaLine[] = [];
+  try {
+    generated = await options.notableRenderer(notable, cards);
+  } catch {
+    generated = [];
+  }
   const validSequences = new Set(notable.map((event) => event.seq));
-  const safeGenerated = generated.filter((line) => validSequences.has(line.seq)).map(safetyPass);
-  return [...templateLines, ...safeGenerated].sort((left, right) => left.seq - right.seq);
+  const safeGenerated = generated
+    .filter((line) => validSequences.has(line.seq))
+    .filter(
+      (line, index, all) => all.findIndex((candidate) => candidate.seq === line.seq) === index,
+    )
+    .map(safetyPass);
+  const generatedSequences = new Set(safeGenerated.map((line) => line.seq));
+  const fallbacks = notable
+    .filter((event) => !generatedSequences.has(event.seq))
+    .map((event) => safetyPass(templateLine(event, cards)));
+  return [...templateLines, ...safeGenerated, ...fallbacks]
+    .sort((left, right) => left.seq - right.seq)
+    .slice(0, options.maxLines ?? Number.POSITIVE_INFINITY);
+}
+
+/** Adds delivery metadata for the single global speech queue without changing persisted lines. */
+export function prioritize(lines: PersonaLine[], events: Event[]): PrioritizedPersonaLine[] {
+  const bySequence = new Map(events.map((event) => [event.seq, event]));
+  return lines.map((personaLine) => {
+    const event = bySequence.get(personaLine.seq);
+    const payload = event?.payload;
+    const type = payload?.type;
+    const priority: PrioritizedPersonaLine['priority'] =
+      type === 'ESCALATE' || (payload?.type === 'COLLISION' && payload.tier === 'CONFIRMED')
+        ? 3
+        : type === 'SPEC_MERGE_RESULT' || type === 'BLOCKER' || type === 'LEASE_DENIED'
+          ? 2
+          : type === 'COLLISION' || type === 'MESSAGE'
+            ? 1
+            : 0;
+    const replyTo = payload?.type === 'MESSAGE' ? payload.to : undefined;
+    return { ...personaLine, priority, ...(replyTo ? { replyTo } : {}) };
+  });
+}
+
+/** Deterministically groups an ordered event stream into renderer-sized conversation windows. */
+export function conversationWindows(events: Event[], windowMs = 2_500): Event[][] {
+  if (!(windowMs > 0)) throw new Error('windowMs must be positive');
+  const ordered = [...events].sort((a, b) => a.seq - b.seq);
+  const windows: Event[][] = [];
+  for (const event of ordered) {
+    const current = windows.at(-1);
+    const first = current?.[0];
+    const elapsed = first ? Date.parse(event.ts) - Date.parse(first.ts) : 0;
+    if (!current || !Number.isFinite(elapsed) || elapsed >= windowMs) windows.push([event]);
+    else current.push(event);
+  }
+  return windows;
+}
+
+/** Prevent repeated low-priority lines while never suppressing urgent alerts. */
+export function applyCooldown(
+  lines: PrioritizedPersonaLine[],
+  cooldownSequences = 3,
+): PrioritizedPersonaLine[] {
+  const lastBySpeaker = new Map<string, number>();
+  return lines.filter((personaLine) => {
+    const previous = lastBySpeaker.get(personaLine.speaker);
+    if (
+      personaLine.priority < 2 &&
+      previous !== undefined &&
+      personaLine.seq - previous < cooldownSequences
+    )
+      return false;
+    lastBySpeaker.set(personaLine.speaker, personaLine.seq);
+    return true;
+  });
 }
 
 function templateLine(event: Event, cards: PersonaCard[]): PersonaLine {
@@ -158,6 +241,7 @@ function roleFor(event: Event, cards: PersonaCard[]): string {
 function safetyPass(personaLine: PersonaLine): PersonaLine {
   const withoutPersonalAttacks = personaLine.text
     .replace(/\b(idiot|stupid|incompetent|lazy)\b/gi, 'incorrect')
+    .replace(/\b(you are|you're)\s+(?:bad|awful|terrible)\b/gi, 'the code is incorrect')
     .replace(/\s+/g, ' ')
     .trim();
   return { ...personaLine, text: withoutPersonalAttacks.slice(0, MAX_LINE_LENGTH) };

@@ -18,7 +18,7 @@ export function PresenterView() {
             <i></i>
             <i></i>
           </span>
-          <strong>Clankergram</strong>
+          <strong>Agentigram</strong>
         </div>
         <div className="presenter-actions">
           <button type="button" onClick={() => setVoiceOn((value) => !value)}>

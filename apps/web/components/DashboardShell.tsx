@@ -20,13 +20,13 @@ export function DashboardShell({ teamId, children }: { teamId: string; children:
   return (
     <div className={pathname.endsWith('/present') ? 'app-shell presenting' : 'app-shell'}>
       <aside className="rail">
-        <Link className="wordmark" href={base} aria-label="Clankergram room">
+        <Link className="wordmark" href={base} aria-label="Agentigram room">
           <span className="wordmark-signal">
             <i></i>
             <i></i>
             <i></i>
           </span>
-          <span>Clankergram</span>
+          <span>Agentigram</span>
         </Link>
         <nav aria-label="Room views">
           {views.map((view) => {

@@ -4,6 +4,7 @@ import {
   bootstrapMedian,
   bradleyTerry,
   declareWinner,
+  deriveTaskOutcomes,
   posteriorSummary,
   seededRandom,
   thompsonRecommendation,
@@ -49,5 +50,71 @@ describe('@clankergram/stats', () => {
     );
     expect(result.model).toBe('A');
     expect(result.reason).toContain('100 tasks');
+  });
+
+  it('derives verified outcomes and excludes lease-blocked time', () => {
+    const base = {
+      id: 'e',
+      roomId: 'r',
+      actor: { engineerId: 'sam', sessionId: 'payments', kind: 'agent' as const },
+      source: 'system' as const,
+    };
+    const outcomes = deriveTaskOutcomes([
+      {
+        ...base,
+        id: '1',
+        seq: 1,
+        ts: '2026-01-01T00:00:00Z',
+        payload: {
+          type: 'SESSION_STARTED',
+          sessionId: 'payments',
+          host: 'codex',
+          model: 'gpt',
+          branch: 'b',
+          task: 'Fix checkout bug',
+        },
+      },
+      {
+        ...base,
+        id: '2',
+        seq: 2,
+        ts: '2026-01-01T00:01:00Z',
+        payload: { type: 'LEASE_DENIED', symbols: [], heldBy: 'backend', reason: 'busy' },
+      },
+      {
+        ...base,
+        id: '3',
+        seq: 3,
+        ts: '2026-01-01T00:03:00Z',
+        payload: {
+          type: 'LEASE_GRANTED',
+          leaseId: 'l',
+          symbols: [],
+          fencingToken: 3,
+          expiresAt: 'x',
+        },
+      },
+      {
+        ...base,
+        id: '4',
+        seq: 4,
+        ts: '2026-01-01T00:05:00Z',
+        payload: { type: 'CI_RESULT', commit: 'c', status: 'pass', sessionId: 'payments' },
+      },
+      {
+        ...base,
+        id: '5',
+        seq: 5,
+        ts: '2026-01-01T00:10:00Z',
+        payload: { type: 'RUN_VERIFIED', runId: 'run', sessionId: 'payments' },
+      },
+    ]);
+    expect(outcomes[0]).toMatchObject({
+      verifiedSuccess: true,
+      firstPassCi: true,
+      category: 'BUG_FIX',
+      leaseBlockedMs: 120_000,
+      durationMs: 480_000,
+    });
   });
 });

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyVerificationEvent,
   brierScore,
+  closeLeagueMarket,
   createLeague,
   createMarket,
   lmsrCost,
@@ -9,6 +11,7 @@ import {
   quote,
   settleMarket,
   voidAndRefund,
+  voidFlaggedPosition,
 } from './index.js';
 
 const market = () =>
@@ -55,5 +58,50 @@ describe('@clankergram/league', () => {
 
   it('scores calibrated forecasts', () => {
     expect(brierScore({ yes: 0.8, no: 0.2 }, 'yes')).toBeCloseTo(0.08);
+  });
+
+  it('settles CI markets from authoritative results and audits the sequence', () => {
+    const ci = createMarket({
+      marketId: 'ci-abc',
+      kind: 'binary',
+      question: 'CI?',
+      outcomes: ['pass', 'fail'],
+      closesAt: '2026-09-19T12:00:00Z',
+    });
+    const book = placeTrade(createLeague(['sam'], [ci]), 'sam', 'ci-abc', 'pass', 10);
+    const event = {
+      id: 'e',
+      seq: 12,
+      roomId: 'r',
+      ts: '2026-09-19T12:00:00Z',
+      actor: { engineerId: 'system', kind: 'system' as const },
+      source: 'github' as const,
+      payload: { type: 'CI_RESULT' as const, commit: 'abc', status: 'pass' as const },
+    };
+    const settled = applyVerificationEvent(book, event);
+    expect(settled.markets['ci-abc']?.status).toBe('resolved');
+    expect(settled.resolutions['ci-abc']).toEqual({ outcome: 'pass', seq: 12 });
+  });
+
+  it('flags and refunds only own-agent positions after intervention', () => {
+    const own = createMarket({
+      marketId: 'm',
+      kind: 'binary',
+      question: 'Finish?',
+      outcomes: ['yes', 'no'],
+      closesAt: 'x',
+      subjectSession: 'agent-a',
+    });
+    let book = placeTrade(
+      createLeague(['sam'], [own], { 'agent-a': 'sam' }),
+      'sam',
+      'm',
+      'yes',
+      10,
+    );
+    book = closeLeagueMarket(book, 'm');
+    const refunded = voidFlaggedPosition(book, 'sam', 'm');
+    expect(refunded.balances.sam).toBeCloseTo(1_000);
+    expect(refunded.voidedPositions).toContain('sam:m');
   });
 });

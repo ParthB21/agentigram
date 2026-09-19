@@ -17,6 +17,25 @@ export function RoomView({ teamId }: { teamId: string }) {
   const stream = useRoomStream(teamId);
   const events = stream.events.length > 0 ? stream.events : demoEvents;
   const seeded = stream.events.length === 0;
+  const displayedAgents = seeded
+    ? agents
+    : Object.values(stream.roomState.sessions)
+        .filter((session) => session.status !== 'ended')
+        .map((session) => ({
+          id: session.sessionId,
+          engineer: session.engineerId,
+          role: session.role ?? session.sessionId,
+          model: session.model,
+          host: session.host,
+          branch: session.branch,
+          task: session.task ?? session.intent?.task ?? 'Awaiting task intent',
+          status: session.status,
+          lease: Object.values(stream.roomState.leases)
+            .find((lease) => lease.sessionId === session.sessionId)
+            ?.symbols[0]?.split('#')
+            .at(-1)
+            ?.split(':')[0],
+        }));
   const [filter, setFilter] = useState('All');
   const shownEvents = useMemo(() => {
     const selected = filters.find((item) => item.label === filter);
@@ -32,7 +51,7 @@ export function RoomView({ teamId }: { teamId: string }) {
         <div>
           <p className="context-line">Room / {teamId}</p>
           <h1>Four agents, one codebase.</h1>
-          <p>Clankergram is watching the seams between their work.</p>
+          <p>Agentigram is watching the seams between their work.</p>
         </div>
         <div className="connection-state">
           <i className={stream.status === 'live' ? 'live' : ''}></i>
@@ -73,10 +92,10 @@ export function RoomView({ teamId }: { teamId: string }) {
         <section className="agents-panel" aria-labelledby="agents-title">
           <div className="section-heading">
             <h2 id="agents-title">Agents</h2>
-            <span>{agents.filter((agent) => agent.status !== 'idle').length} working</span>
+            <span>{displayedAgents.filter((agent) => agent.status !== 'idle').length} working</span>
           </div>
           <div className="agent-list">
-            {agents.map((agent) => (
+            {displayedAgents.map((agent) => (
               <article className="agent-row" key={agent.id}>
                 <span className={`role-avatar ${agent.id}`}>{agent.role[0]}</span>
                 <div className="agent-primary">

@@ -1,9 +1,11 @@
 'use client';
 
+import { prioritize } from '@clankergram/personas';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { activeCollision, contract, demoEvents } from '../lib/demo-data';
 import { submitHumanAction } from '../lib/human-actions';
+import { useVoiceQueue } from '../lib/use-voice-queue';
 
 const tiers = ['FILE', 'PREDICTED', 'SEMANTIC', 'CONFIRMED'];
 const steps = ['Open', 'Proposed', 'Accepted', 'Compiled', 'Verified'];
@@ -25,7 +27,7 @@ const fallbackLines = [
 ];
 
 export function CollisionView({ teamId }: { teamId: string }) {
-  const [voice, setVoice] = useState<'Off' | 'Normal' | 'Unhinged'>('Off');
+  const { mode: voice, setMode: setVoice, speak } = useVoiceQueue();
   const [notice, setNotice] = useState('');
   const [personaLines, setPersonaLines] = useState(fallbackLines);
 
@@ -67,13 +69,12 @@ export function CollisionView({ teamId }: { teamId: string }) {
   };
 
   const previewVoice = () => {
-    if (voice === 'Off' || !('speechSynthesis' in window)) return;
-    speechSynthesis.cancel();
-    const message = new SpeechSynthesisUtterance(
-      'Semantic collision. Backend changed User dot I D while Payments still depends on the old type.',
+    speak(
+      prioritize(
+        personaLines,
+        demoEvents.filter((event) => personaLines.some((line) => line.seq === event.seq)),
+      ),
     );
-    message.rate = voice === 'Unhinged' ? 1.18 : 1;
-    speechSynthesis.speak(message);
   };
 
   return (
