@@ -1,6 +1,13 @@
 import { emptyRoomState } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
-import { applyFrame, initialStream, MAX_EVENTS, roomSocketUrl } from './room-stream';
+import {
+  applyDaemonSnapshot,
+  applyFrame,
+  initialStream,
+  localBridgeUrl,
+  MAX_EVENTS,
+  roomSocketUrl,
+} from './room-stream';
 
 const event = (seq: number) => ({
   id: `e${seq}`,
@@ -19,6 +26,31 @@ describe('room stream', () => {
       'ws://localhost:8787/room/hackathon',
     );
     expect(roomSocketUrl('ws://h', 'a b')).toBe('ws://h/room/a%20b');
+    expect(localBridgeUrl('a b')).toBe('/api/rooms/a%20b/stream');
+  });
+
+  it('applies local daemon snapshots without replaying them over the snapshot state', () => {
+    const roomState = emptyRoomState('r');
+    roomState.lastSeq = 3;
+    const next = applyDaemonSnapshot(
+      initialStream('r'),
+      JSON.stringify({ roomId: 'r', transport: 'connected', roomState, events: [event(3)] }),
+    );
+    expect(next.status).toBe('live');
+    expect(next.source).toBe('daemon');
+    expect(next.lastSeq).toBe(3);
+    expect(next.events.map((item) => item.seq)).toEqual([3]);
+    expect(next.roomState.lastSeq).toBe(3);
+  });
+
+  it('surfaces a replicated but disconnected daemon as read-only', () => {
+    const roomState = emptyRoomState('r');
+    const next = applyDaemonSnapshot(
+      initialStream('r'),
+      JSON.stringify({ roomId: 'r', transport: 'read-only', roomState, events: [] }),
+    );
+    expect(next.status).toBe('read-only');
+    expect(next.transport).toBe('read-only');
   });
 
   it('appends events in order and ignores already-seen seqs', () => {

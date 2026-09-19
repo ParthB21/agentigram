@@ -15,8 +15,8 @@ const filters: Array<{ label: string; types?: PayloadType[] }> = [
 
 export function RoomView({ teamId }: { teamId: string }) {
   const stream = useRoomStream(teamId);
-  const events = stream.events.length > 0 ? stream.events : demoEvents;
-  const seeded = stream.events.length === 0;
+  const seeded = !stream.source;
+  const events = seeded ? demoEvents : stream.events;
   const displayedAgents = seeded
     ? agents
     : Object.values(stream.roomState.sessions)
@@ -36,6 +36,9 @@ export function RoomView({ teamId }: { teamId: string }) {
             .at(-1)
             ?.split(':')[0],
         }));
+  const liveCollision = Object.values(stream.roomState.collisions).find(
+    (collision) => collision.status === 'open',
+  );
   const [filter, setFilter] = useState('All');
   const shownEvents = useMemo(() => {
     const selected = filters.find((item) => item.label === filter);
@@ -50,43 +53,68 @@ export function RoomView({ teamId }: { teamId: string }) {
       <header className="page-header room-heading">
         <div>
           <p className="context-line">Room / {teamId}</p>
-          <h1>Four agents, one codebase.</h1>
+          <h1>
+            {seeded
+              ? 'Four agents'
+              : `${displayedAgents.length} agent${displayedAgents.length === 1 ? '' : 's'}`}
+            , one codebase.
+          </h1>
           <p>Agentigram is watching the seams between their work.</p>
         </div>
         <div className="connection-state">
           <i className={stream.status === 'live' ? 'live' : ''}></i>
-          <span>{seeded ? 'Rehearsal data' : stream.status}</span>
+          <span>{seeded ? 'Connecting to local daemon' : stream.status}</span>
           {seeded && <b>Seeded</b>}
         </div>
       </header>
 
-      <section className="signal-board" aria-labelledby="collision-title">
-        <div className="signal-copy">
-          <div className="signal-kicker">
-            <span>Semantic collision</span>
-            <strong>{Math.round(activeCollision.confidence * 100)}% confidence</strong>
+      {seeded || liveCollision ? (
+        <section className="signal-board" aria-labelledby="collision-title">
+          <div className="signal-copy">
+            <div className="signal-kicker">
+              <span>{seeded ? 'Semantic collision' : `${liveCollision?.tier} collision`}</span>
+              <strong>
+                {seeded ? `${Math.round(activeCollision.confidence * 100)}% confidence` : 'Live'}
+              </strong>
+            </div>
+            <h2 id="collision-title">
+              {seeded
+                ? 'Backend changed an interface Payments already depends on.'
+                : `${liveCollision?.writerSession} overlaps ${liveCollision?.affectedSessions.join(', ')}.`}
+            </h2>
+            <p>{seeded ? activeCollision.detail : liveCollision?.detail}</p>
+            <code>{seeded ? activeCollision.symbol : liveCollision?.symbols[0]}</code>
           </div>
-          <h2 id="collision-title">Backend changed an interface Payments already depends on.</h2>
-          <p>{activeCollision.detail}</p>
-          <code>{activeCollision.symbol}</code>
-        </div>
-        <div
-          className="signal-path"
-          role="img"
-          aria-label="Collision flow from Backend to Payments"
-        >
-          <span className="role-avatar backend">B</span>
-          <div>
-            <i></i>
-            <b>contract proposed</b>
-            <i></i>
+          <div className="signal-path" role="img" aria-label="Collision participants">
+            <span className="role-avatar backend">
+              {(seeded ? 'Backend' : (liveCollision?.writerSession ?? '?'))[0]}
+            </span>
+            <div>
+              <i></i>
+              <b>{seeded ? 'contract proposed' : 'coordination required'}</b>
+              <i></i>
+            </div>
+            <span className="role-avatar payments">
+              {(seeded ? 'Payments' : (liveCollision?.affectedSessions[0] ?? '?'))[0]}
+            </span>
           </div>
-          <span className="role-avatar payments">P</span>
-        </div>
-        <Link className="text-action" href={`/team/${teamId}/collisions`}>
-          Review collision
-        </Link>
-      </section>
+          <Link className="text-action" href={`/team/${teamId}/collisions`}>
+            Review collision
+          </Link>
+        </section>
+      ) : (
+        <section className="signal-board" aria-labelledby="collision-title">
+          <div className="signal-copy">
+            <div className="signal-kicker">
+              <span>Room health</span>
+              <strong>Clear</strong>
+            </div>
+            <h2 id="collision-title">No active collisions.</h2>
+            <p>Live agent activity is flowing from the local Agentigram daemon.</p>
+            <code>seq {stream.lastSeq}</code>
+          </div>
+        </section>
+      )}
 
       <div className="room-grid">
         <section className="agents-panel" aria-labelledby="agents-title">
@@ -134,6 +162,11 @@ export function RoomView({ teamId }: { teamId: string }) {
             </fieldset>
           </div>
           <ol className="event-list">
+            {!seeded && shownEvents.length === 0 && (
+              <li>
+                <p>Connected. Waiting for the next agent event…</p>
+              </li>
+            )}
             {shownEvents.map((event) => (
               <li key={event.seq}>
                 <time>

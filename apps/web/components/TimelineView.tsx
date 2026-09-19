@@ -9,7 +9,8 @@ const REPLAY_INTERVAL_MS = 250;
 
 export function TimelineView({ teamId }: { teamId: string }) {
   const stream = useRoomStream(teamId);
-  const events = stream.events.length > 0 ? stream.events : demoEvents;
+  const seeded = !stream.source;
+  const events = seeded ? demoEvents : stream.events;
   const lastSequence = events.at(-1)?.seq ?? 0;
   const [cursor, setCursor] = useState(lastSequence);
   const [playing, setPlaying] = useState(false);
@@ -52,9 +53,7 @@ export function TimelineView({ teamId }: { teamId: string }) {
           <h1>Replay the room.</h1>
           <p>Every view is rebuilt from the same event sequence as the coordinator.</p>
         </div>
-        <span className="seed-label">
-          {stream.events.length === 0 ? 'Seeded rehearsal' : 'Live history'}
-        </span>
+        <span className="seed-label">{seeded ? 'Seeded rehearsal' : 'Live daemon history'}</span>
       </header>
 
       <section className="replay-console">

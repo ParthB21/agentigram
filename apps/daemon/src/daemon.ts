@@ -42,6 +42,7 @@ import { WorktreeWatcher } from './watcher.js';
 const SESSION_HEARTBEAT_MS = 10_000;
 const AGENT_WRITE_MATCH_WINDOW_MS = 5_000;
 const MAX_INBOX_EVENTS = 20;
+const MAX_DASHBOARD_EVENTS = 2_500;
 const ACTIONABLE_TYPES = new Set([
   'MESSAGE',
   'COLLISION',
@@ -73,6 +74,7 @@ export class LaptopDaemon {
   private readonly sessions = new Set<string>();
   private readonly watchers = new Map<string, WorktreeWatcher>();
   private readonly recentAgentWrites = new Map<string, number>();
+  private readonly dashboardEvents: Event[] = [];
   private readonly inbox = new Map<string, string[]>();
   private readonly symbols: SymbolReader;
   private readonly adapter: AgentAdapter;
@@ -143,6 +145,8 @@ export class LaptopDaemon {
           sessionId: this.state.sessionId,
           transport: this.transport.status,
           lastSeq: this.roomState.lastSeq,
+          roomState: this.roomState,
+          events: this.dashboardEvents,
           sessions: [...this.sessions],
           agents: Object.values(this.roomState.sessions),
           leases: Object.values(this.roomState.leases),
@@ -365,6 +369,10 @@ export class LaptopDaemon {
     for (const event of events.sort((a, b) => a.seq - b.seq)) {
       if (event.seq <= this.roomState.lastSeq) continue;
       this.roomState = reduce(this.roomState, event).state;
+      this.dashboardEvents.push(event);
+      if (this.dashboardEvents.length > MAX_DASHBOARD_EVENTS) {
+        this.dashboardEvents.splice(0, this.dashboardEvents.length - MAX_DASHBOARD_EVENTS);
+      }
       this.cursor.set(event.seq);
       if (
         isAgentVisible(event.payload.type) &&
