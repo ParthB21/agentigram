@@ -10,7 +10,7 @@ import {
   thompsonRecommendation,
 } from './index.js';
 
-describe('@clankergram/stats', () => {
+describe('@agentigram/stats', () => {
   it('updates beta-binomial evidence', () => {
     expect(betaPosterior(8, 2)).toEqual({ alpha: 9, beta: 3 });
   });

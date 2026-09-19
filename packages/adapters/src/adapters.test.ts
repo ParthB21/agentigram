@@ -1,4 +1,4 @@
-import { symbolKey } from '@clankergram/protocol';
+import { symbolKey } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   type AdapterStatus,
@@ -31,12 +31,20 @@ describe('adapter registry', () => {
     expect(events[0]?.payload).toMatchObject({ type: 'SESSION_STARTED', branch: 'main' });
   });
 
-  it('catalogued hosts without an adapter degrade to watcher + MCP (no events from hooks)', async () => {
+  it('codex is a ready hooks adapter', async () => {
     const a = createAdapter('codex');
-    expect(a.mode).toBe('degraded');
-    expect(
-      await a.normalize({}, { roomId: 'r', engineerId: 'e', sessionId: 's', newId: () => 'x' }),
-    ).toEqual([]);
+    expect(a.mode).toBe('hooks');
+    const events = await a.normalize(
+      {
+        session_id: 's',
+        transcript_path: null,
+        cwd: '/repo',
+        hook_event_name: 'SessionStart',
+        model: 'gpt-5',
+      },
+      { roomId: 'r', engineerId: 'e', sessionId: 's', newId: () => 'x', branch: 'main' },
+    );
+    expect(events[0]?.payload).toMatchObject({ type: 'SESSION_STARTED', host: 'codex' });
   });
 
   it('rejects unknown hosts and lets Part 2 register real adapters', () => {

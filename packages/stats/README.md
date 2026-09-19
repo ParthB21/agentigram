@@ -1,4 +1,4 @@
-# @clankergram/stats
+# @agentigram/stats
 
 **Owner:** Part 4
 

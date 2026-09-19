@@ -4,7 +4,7 @@ import {
   type McpToolName,
   mcpToolJsonSchemas,
   ValidationError,
-} from '@clankergram/protocol';
+} from '@agentigram/protocol';
 
 /** MCP tool definition as advertised over `tools/list`. */
 export type ToolDef = {
@@ -32,7 +32,7 @@ export const TOOL_DESCRIPTIONS: Record<McpToolName, string> = {
 
 /**
  * Mirrors OpenAgents `buildToolDefs(disabledModules)`: definitions are data, and individual tools
- * can be switched off. Schemas come from `@clankergram/protocol`, so they cannot drift.
+ * can be switched off. Schemas come from `@agentigram/protocol`, so they cannot drift.
  */
 export function buildToolDefs(disabled: ReadonlySet<McpToolName> = new Set()): ToolDef[] {
   const schemas = mcpToolJsonSchemas();

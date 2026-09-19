@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { compile, verifyRun } from './index.js';
 
-describe('@clankergram/contracts', () => {
+describe('@agentigram/contracts', () => {
   it('compiles deterministic TypeScript checks', () => {
     const contract = {
       symbol: 'src/types/user.ts#User.id',

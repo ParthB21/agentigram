@@ -6,8 +6,8 @@ import {
   type NewEvent,
   type RoomState,
   type ServerMessage,
-} from '@clankergram/protocol';
-import { type Effect, reduce } from '@clankergram/reducer';
+} from '@agentigram/protocol';
+import { type Effect, reduce } from '@agentigram/reducer';
 
 /** One connected client, transport-agnostic so a Room is testable without sockets. */
 export type Sink = {
@@ -87,10 +87,11 @@ export class Room {
         }
       }
     }
-    // TODO(part 1): replace with the reducer's routing (read sets / dependency closure).
-    // Until then every agent-visible event goes to every daemon and worker, and the
-    // dashboard-only filter below is what keeps MARKET_* / TRADE / PERSONA_LINES away from agents.
-    for (const sink of this.sinks) if (sink.kind !== 'dashboard') recipients.add(sink);
+    // Workers analyze every agent-visible event. Session-less daemons are explicit observers.
+    for (const sink of this.sinks) {
+      if (sink.kind === 'worker' || (sink.kind === 'daemon' && !sink.sessionId))
+        recipients.add(sink);
+    }
     for (const sink of recipients) {
       if (this.canSee(sink, event)) sink.send({ type: 'EVENTS', events: [event] });
     }

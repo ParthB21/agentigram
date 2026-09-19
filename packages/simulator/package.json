@@ -1,5 +1,5 @@
 {
-  "name": "@clankergram/simulator",
+  "name": "@agentigram/simulator",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,8 +17,8 @@
   },
   "dependencies": {
     "ws": "^8.21.3",
-    "@clankergram/protocol": "workspace:*",
-    "@clankergram/reducer": "workspace:*",
+    "@agentigram/protocol": "workspace:*",
+    "@agentigram/reducer": "workspace:*",
     "pino": "^10.3.1"
   },
   "devDependencies": {

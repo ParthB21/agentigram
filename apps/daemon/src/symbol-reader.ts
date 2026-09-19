@@ -1,11 +1,11 @@
 import { resolve } from 'node:path';
-import { Indexer, readSetFromFiles } from '@clankergram/analysis';
-import type { SymbolKey } from '@clankergram/protocol';
+import { Indexer, readSetFromFiles } from '@agentigram/analysis';
+import type { SymbolKey } from '@agentigram/protocol';
 
 type Log = { info(obj: object, msg?: string): void; warn(obj: object, msg?: string): void };
 
 /**
- * Turns "the agent read these files" into symbol keys, using `@clankergram/analysis`'s index.
+ * Turns "the agent read these files" into symbol keys, using `@agentigram/analysis`'s index.
  * One long-lived `Indexer` per repo: only files reported via `markDirty` are re-parsed, and the
  * first index is built off the hook path (`warm`) so a cold TypeScript program never eats a
  * hook's time budget. Failure (no tsconfig, non-TS repo) degrades to "no symbols", never an error.

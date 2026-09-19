@@ -1,6 +1,6 @@
 'use client';
 
-import type { PrioritizedPersonaLine } from '@clankergram/personas';
+import type { PrioritizedPersonaLine } from '@agentigram/personas';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type VoiceMode = 'Off' | 'Normal' | 'Unhinged';

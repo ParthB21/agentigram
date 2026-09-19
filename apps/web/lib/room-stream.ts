@@ -3,8 +3,8 @@ import {
   emptyRoomState,
   type RoomState,
   ServerMessageSchema,
-} from '@clankergram/protocol';
-import { reduce } from '@clankergram/reducer';
+} from '@agentigram/protocol';
+import { reduce } from '@agentigram/reducer';
 
 export const DEFAULT_COORDINATOR_URL = 'ws://localhost:8787';
 export const MAX_EVENTS = 2_500;

@@ -1,4 +1,4 @@
-# @clankergram/reducer
+# @agentigram/reducer
 
 **Owner:** Part 1
 

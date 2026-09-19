@@ -23,7 +23,7 @@ const market = () =>
     closesAt: '2026-09-19T12:00:00Z',
   });
 
-describe('@clankergram/league', () => {
+describe('@agentigram/league', () => {
   it('creates an even market whose prices sum to one', () => {
     const current = market();
     expect(quote(current, 'yes')).toBeCloseTo(0.5);

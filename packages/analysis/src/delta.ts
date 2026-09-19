@@ -2,7 +2,7 @@ import { execFile as execFileCallback } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import type { ApiChange, SymbolKey } from '@clankergram/protocol';
+import type { ApiChange, SymbolKey } from '@agentigram/protocol';
 import ts from 'typescript';
 import { Indexer } from './indexer.js';
 import type { IndexedSymbol, RepoIndex } from './types.js';

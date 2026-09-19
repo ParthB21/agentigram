@@ -1,6 +1,6 @@
 'use client';
 
-import type { PayloadType } from '@clankergram/protocol';
+import type { PayloadType } from '@agentigram/protocol';
 import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { activeCollision, agents, demoEvents, describeEvent } from '../lib/demo-data';

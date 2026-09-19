@@ -22,7 +22,7 @@ One line per decision the spec did not make: `date · part · decision · why`. 
 | `@modelcontextprotocol/sdk` | 1.30.0 | not installed | Part 2 adds it. `packages/mcp` has tool definitions and validation only. |
 
 - 2026-09-19 · all · `.nvmrc` and `engines` say Node 22, but the bootstrap ran on Node 20.20.2 · Node 22 was not installed and the dependency choices above run on both. CI uses `.nvmrc`, so CI runs Node 22.
-- 2026-09-19 · all · Internal packages export TypeScript source (`exports` → `./src/index.ts`) and `build` is `tsc --noEmit` · no build step between packages, so `pnpm sim`, Vitest and Next all see source directly. Publishing `npx clankergram` needs a bundled build; that is Part 2's job.
+- 2026-09-19 · all · Internal packages export TypeScript source (`exports` → `./src/index.ts`) and `build` is `tsc --noEmit` · no build step between packages, so `pnpm sim`, Vitest and Next all see source directly. Publishing `npx agentigram` needs a bundled build; that is Part 2's job.
 - 2026-09-19 · all · Root `pnpm-lock.yaml` is committed · CI needs a lockfile and CLAUDE.md only exempts the demo repo's; treat the root lockfile as the exception to flag in review.
 - 2026-09-19 · part 4 · `apps/web` builds and runs with webpack (`next dev/build --webpack`) plus `extensionAlias` · Turbopack (Next 16 default) failed to resolve NodeNext `./x.js` imports to `./x.ts` in workspace packages.
 - 2026-09-19 · all · `openagents-develop/` (reference checkout, ~2.9k files) is excluded from Biome and is not in the pnpm workspace globs · it is read-only reference material, not part of this repo's code.
@@ -41,7 +41,7 @@ One line per decision the spec did not make: `date · part · decision · why`. 
 ### Reducer, simulator
 
 - 2026-09-19 · part 1 · Reducing an event whose `seq` ≤ `state.lastSeq` is a no-op · replay from any offset is safe.
-- 2026-09-19 · part 1 · The mock coordinator sends every agent-visible event to every daemon and worker · the reducer's routing is a TODO, and this keeps dashboard-only events away from agents until it lands. Replace with reducer routing.
+- 2026-09-19 · part 1 · **Superseded by Half 1:** the simulator now consumes the reducer's deterministic session routing; workers and explicit session-less observers still receive every agent-visible event.
 - 2026-09-19 · part 1 · Workers get agent-visible events only; dashboards get everything · workers are not dashboards and never need markets or dialogue.
 - 2026-09-19 · part 1 · The mock accepts any non-empty HELLO token · auth is Part 1's real coordinator.
 - 2026-09-19 · part 1 · `pnpm sim` plays into room `hackathon` at server start (not on first connect) · late joiners get it through replay, which is what the reconnect behaviour must handle anyway.
@@ -79,6 +79,19 @@ Reference: `openagents-develop/` (OpenAgents, Apache 2.0). We took architecture 
 - 2026-09-19 · part 1 · Not done in M1: a timeout for sockets that never send HELLO; the `/export` endpoint (M4); alarms (M2).
 - 2026-09-19 · part 1 · `apps/coordinator` tsconfig loads `@cloudflare/workers-types` alongside `node` · needed for `DurableObject` and `WebSocketPair`; no type clashes appeared.
 
+## Agentigram Half 1 · P2P authority (2026-09-19)
+
+- 2026-09-19 · half 1 · Clean-break rename from the former project name to Agentigram, including package scope, CLI, runtime directory, hook names, UI and Pages base path · no aliases or migration layer are carried.
+- 2026-09-19 · half 1 · A designated authority laptop is the only event writer and human escalation authority · leases require a stable total order; automatic election would allow split-brain writes.
+- 2026-09-19 · half 1 · Hyperswarm/Protomux is the encrypted control plane and Corestore/Hypercore is the replicated history plane · Pear modules are useful independently, so the Electron daemon does not migrate to the full Pear runtime.
+- 2026-09-19 · half 1 · Autobase is not used for v1 authority state · eventual multi-writer reordering is incompatible with fencing-token and first-claim semantics.
+- 2026-09-19 · half 1 · Authority loss moves peers to `read-only`; no lease, human action or event submission is accepted until reconnect · safe pause is preferable to silent divergence.
+- 2026-09-19 · half 1 · Room invites include repository fingerprint, authority Noise key, event-core key and a random 256-bit capability · the fingerprint prevents accidental cross-repository joins and the capability gates the control channel.
+- 2026-09-19 · half 1 · Claude Code and Codex are both hook-native adapters; Codex uses project `hooks.json` plus project `config.toml` MCP config and requires explicit `/hooks` trust · matches current official Codex hook behavior.
+- 2026-09-19 · half 1 · Protocol changes are additive only: optional write fencing token, lease grantee/TTL, session read/write sets and negotiation deadline · existing scenario fixtures and other-half packages continue to parse.
+- 2026-09-19 · half 1 · The Cloudflare Durable Object remains an optional adapter over the same `RoomCore` · preserves the existing tested hosted path without making it the primary architecture.
+- 2026-09-19 · half 1 · The macOS Electron window exposes only five narrow preload methods; renderer Node integration stays disabled and sandboxing/context isolation remain enabled · live local status does not justify a privileged renderer.
+
 ## Part 3 · M0/M1 Demo repo and symbol index (2026-09-19)
 
 - 2026-09-19 · part 3 · TypeScript stays at 5.9.3 for `packages/analysis` (`typescript` is a dependency, `~5.9.3`) · the engine is built on the LanguageService and checker JS API; 7.x is the native port and that API is not a safe base. Recheck when 7.x documents a stable JS API.
@@ -94,10 +107,12 @@ Reference: `openagents-develop/` (OpenAgents, Apache 2.0). We took architecture 
 
 ## Part 2 · M1 Observe merged (2026-09-19)
 
+Historical section; the Half 1 P2P implementation above supersedes its remaining-work statements and wires the Electron shell to the daemon.
+
 Branch `p2/laptop-observe-electron-shell` (one commit, `23f5a56`, by Pierce Luu) was fast-forwarded into `main`. It is Part 2's M1 only; M2 (leases, PreToolUse guard, delivery, MCP forwarding results), M3 (trailers, OTel receiver, context packets, duels) and M4 (doctor) are not started. It also adds a static Electron UI shell (`apps/daemon/ui`, `electron` 38.8.6) that prompt 2 does not ask for and that is not wired to the daemon.
 
-- 2026-09-19 · part 2 · Reads are mapped to symbols through `SymbolReader` over `@clankergram/analysis`'s `Indexer` (index warmed at SessionStart; dirty files refreshed) · `readSetFromFiles` now needs the index, and a cold TS program must not consume a hook's 1 s budget.
-- 2026-09-19 · part 2 · `join --token` / `CLANKERGRAM_TOKEN` carries the coordinator room secret; it is stored only in the 0600 install state, never in repo files · the real coordinator rejects a team code as HELLO token.
+- 2026-09-19 · part 2 · Reads are mapped to symbols through `SymbolReader` over `@agentigram/analysis`'s `Indexer` (index warmed at SessionStart; dirty files refreshed) · `readSetFromFiles` now needs the index, and a cold TS program must not consume a hook's 1 s budget.
+- 2026-09-19 · part 2 · `join --token` / `AGENTIGRAM_TOKEN` carries the coordinator room secret; it is stored only in the 0600 install state, never in repo files · the real coordinator rejects a team code as HELLO token.
 - 2026-09-19 · part 1 · Coordinator authz accepts a daemon `HEARTBEAT` with `source: system` (and nothing else with that source) · the daemon stamps its own liveness beat that way and the coordinator previously rejected it.
 - 2026-09-19 · part 2 · Hook `timeout` values are integer seconds (PreToolUse was `0.3`) · the hooks docs list integers; a fractional value could invalidate the settings file. The 300 ms bound is still enforced by the IPC timeout.
 - 2026-09-19 · part 2 · Adapter and watcher emit POSIX repo-relative paths on every OS · protocol paths and symbol keys are `/`-separated; the adapter test failed on Windows.

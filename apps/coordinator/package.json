@@ -1,8 +1,11 @@
 {
-  "name": "@clankergram/coordinator",
+  "name": "@agentigram/coordinator",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "build": "tsc --noEmit",
     "typecheck": "tsc --noEmit",
@@ -11,11 +14,11 @@
     "deploy": "wrangler deploy"
   },
   "dependencies": {
-    "@clankergram/protocol": "workspace:*",
-    "@clankergram/reducer": "workspace:*"
+    "@agentigram/protocol": "workspace:*",
+    "@agentigram/reducer": "workspace:*"
   },
   "devDependencies": {
-    "@clankergram/simulator": "workspace:*",
+    "@agentigram/simulator": "workspace:*",
     "wrangler": "4.135.0",
     "@cloudflare/vitest-plugin": "1.1.13",
     "@cloudflare/workers-types": "^5.20260919.1"

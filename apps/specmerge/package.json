@@ -1,5 +1,5 @@
 {
-  "name": "@clankergram/specmerge",
+  "name": "@agentigram/specmerge",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,8 +9,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@clankergram/protocol": "workspace:*",
-    "@clankergram/analysis": "workspace:*",
-    "@clankergram/contracts": "workspace:*"
+    "@agentigram/protocol": "workspace:*",
+    "@agentigram/analysis": "workspace:*",
+    "@agentigram/contracts": "workspace:*"
   }
 }

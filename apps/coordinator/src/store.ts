@@ -1,4 +1,4 @@
-import { type Event, EventSchema, type RoomState, RoomStateSchema } from '@clankergram/protocol';
+import { type Event, EventSchema, type RoomState, RoomStateSchema } from '@agentigram/protocol';
 
 /** Persistence the room core needs. Synchronous, because Durable Object SQLite is synchronous. */
 export interface EventStore {

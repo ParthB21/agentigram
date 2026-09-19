@@ -2,7 +2,7 @@ import { createHmac } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { handleWebhook, parseAttribution, verifyWebhookSignature } from './index.js';
 
-describe('@clankergram/github', () => {
+describe('@agentigram/github', () => {
   it('verifies webhook signatures', () => {
     const body = '{"ok":true}';
     const signature = `sha256=${createHmac('sha256', 'secret').update(body).digest('hex')}`;

@@ -1,8 +1,8 @@
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { type Event, isAgentVisible } from '@clankergram/protocol';
-import { createMockCoordinator, type MockCoordinator, userIdUuid } from '@clankergram/simulator';
+import { type Event, isAgentVisible } from '@agentigram/protocol';
+import { createMockCoordinator, type MockCoordinator, userIdUuid } from '@agentigram/simulator';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CursorStore } from './cursor-store.js';
 import { RoomClient } from './room-client.js';

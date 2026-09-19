@@ -1,5 +1,5 @@
-import type { Event, NewEvent, Payload } from '@clankergram/protocol';
-import { runScenario, SCENARIO_EPOCH_MS, userIdUuid } from '@clankergram/simulator';
+import { type Event, type NewEvent, type Payload, symbolKey } from '@agentigram/protocol';
+import { runScenario, SCENARIO_EPOCH_MS, userIdUuid } from '@agentigram/simulator';
 import { describe, expect, it } from 'vitest';
 import { checkToken, safeEqual } from './authz.js';
 import { RoomCore } from './room-core.js';
@@ -42,6 +42,87 @@ describe('ordering and dedupe', () => {
     expect(a.ok && b.ok && b.duplicate && b.event.seq === a.event.seq).toBe(true);
     expect(core.head).toBe(1);
     expect(core.eventsAfter(0)).toHaveLength(1);
+  });
+});
+
+describe('authoritative leases and fencing', () => {
+  const userId = symbolKey('src/types/user.ts', 'User', 'id', 'property');
+
+  it('grants the first claim, denies a conflict, and enforces the fencing token', () => {
+    const core = make();
+    core.submit(started('s1'), SYSTEM);
+    core.submit(started('s2'), SYSTEM);
+    const first = core.submit(
+      ev({ type: 'LEASE_REQUESTED', symbols: [userId], ttlMs: 600_000 }, { source: 'mcp' }),
+      { kind: 'daemon', sessionId: 's1' },
+    );
+    expect(first.ok && first.events.map((event) => event.payload.type)).toEqual([
+      'LEASE_REQUESTED',
+      'LEASE_GRANTED',
+    ]);
+    const lease = Object.values(core.currentState.leases)[0];
+    expect(lease).toMatchObject({ sessionId: 's1', fencingToken: first.ok ? first.event.seq : -1 });
+
+    const second = core.submit(
+      ev(
+        { type: 'LEASE_REQUESTED', symbols: [userId], ttlMs: 600_000 },
+        {
+          actor: { engineerId: 'two', sessionId: 's2', kind: 'agent' },
+          source: 'mcp',
+        },
+      ),
+      { kind: 'daemon', sessionId: 's2' },
+    );
+    expect(second.ok && second.events.at(-1)?.payload).toMatchObject({
+      type: 'LEASE_DENIED',
+      heldBy: 's1',
+    });
+
+    const write = (sessionId: string, fencingToken?: number) =>
+      ev(
+        { type: 'FILE_WRITE', path: 'src/types/user.ts', worktree: '/repo', fencingToken },
+        { actor: { engineerId: sessionId, sessionId, kind: 'agent' } },
+      );
+    expect(core.submit(write('s2'), { kind: 'daemon', sessionId: 's2' })).toMatchObject({
+      ok: false,
+      code: 'UNAUTHORIZED',
+    });
+    expect(core.submit(write('s1', 0), { kind: 'daemon', sessionId: 's1' })).toMatchObject({
+      ok: false,
+      code: 'UNAUTHORIZED',
+    });
+    expect(
+      core.submit(write('s1', lease?.fencingToken), { kind: 'daemon', sessionId: 's1' }).ok,
+    ).toBe(true);
+  });
+
+  it('expires leases by authority time and permits a human override', () => {
+    let now = Date.UTC(2026, 8, 19, 12);
+    const core = make(undefined, { now: () => now });
+    core.submit(started('s1'), SYSTEM);
+    core.submit(
+      ev({ type: 'LEASE_REQUESTED', symbols: [userId], ttlMs: 1_000 }, { source: 'mcp' }),
+      { kind: 'daemon', sessionId: 's1' },
+    );
+    const leaseId = Object.keys(core.currentState.leases)[0];
+    expect(leaseId).toBeTruthy();
+    const released = core.submit(
+      ev(
+        { type: 'LEASE_RELEASED', leaseId: leaseId ?? '' },
+        { actor: { engineerId: 'owner', kind: 'human' }, source: 'mcp' },
+      ),
+      { kind: 'dashboard' },
+    );
+    expect(released.ok).toBe(true);
+    expect(core.currentState.leases).toEqual({});
+
+    core.submit(
+      ev({ type: 'LEASE_REQUESTED', symbols: [userId], ttlMs: 1_000 }, { source: 'mcp' }),
+      { kind: 'daemon', sessionId: 's1' },
+    );
+    now = Date.parse(Object.values(core.currentState.leases)[0]?.expiresAt ?? '') + 1;
+    expect(core.expireLeases()).toHaveLength(1);
+    expect(core.currentState.leases).toEqual({});
   });
 });
 

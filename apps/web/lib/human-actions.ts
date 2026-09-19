@@ -1,4 +1,4 @@
-import type { Payload } from '@clankergram/protocol';
+import type { Payload } from '@agentigram/protocol';
 import { DEFAULT_COORDINATOR_URL, roomSocketUrl } from './room-stream';
 
 const ACTION_TIMEOUT_MS = 4_000;

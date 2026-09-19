@@ -1,4 +1,4 @@
-import type { Event } from '@clankergram/protocol';
+import type { Event } from '@agentigram/protocol';
 
 const DEFAULT_PRIOR = { alpha: 1, beta: 1 };
 const DEFAULT_ITERATIONS = 4_000;

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { ClientMessageSchema, type ErrorCode, type ServerMessage } from '@clankergram/protocol';
+import { ClientMessageSchema, type ErrorCode, type ServerMessage } from '@agentigram/protocol';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 import { Room, type Sink } from './room.js';
 import type { Scenario } from './scenario.js';

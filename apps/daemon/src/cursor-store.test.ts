@@ -1,11 +1,11 @@
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Event } from '@clankergram/protocol';
+import type { Event } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { CursorStore, partitionStale, STALE_EVENT_MAX_AGE_MS } from './cursor-store.js';
 
-const dir = () => mkdtempSync(join(tmpdir(), 'clankergram-cursor-'));
+const dir = () => mkdtempSync(join(tmpdir(), 'agentigram-cursor-'));
 
 describe('CursorStore', () => {
   it('persists across instances and only moves forward', () => {

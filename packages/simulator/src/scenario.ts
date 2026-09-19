@@ -1,5 +1,5 @@
-import { type Event, emptyRoomState, type NewEvent, type RoomState } from '@clankergram/protocol';
-import { type Effect, reduce } from '@clankergram/reducer';
+import { type Event, emptyRoomState, type NewEvent, type RoomState } from '@agentigram/protocol';
+import { type Effect, reduce } from '@agentigram/reducer';
 
 export type ScenarioStep = { atMs: number; event: NewEvent };
 

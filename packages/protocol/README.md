@@ -1,4 +1,4 @@
-# @clankergram/protocol
+# @agentigram/protocol
 
 **Owner:** Part 1
 

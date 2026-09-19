@@ -1,4 +1,4 @@
-import type { SymbolKey } from '@clankergram/protocol';
+import type { SymbolKey } from '@agentigram/protocol';
 import { type Ctx, extractModule } from './extract.js';
 import { RepoHost } from './host.js';
 import { collectImports, collectReferences } from './references.js';

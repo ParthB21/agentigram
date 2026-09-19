@@ -1,5 +1,5 @@
 {
-  "name": "@clankergram/daemon",
+  "name": "@agentigram/daemon",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -8,17 +8,20 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "start": "tsx src/cli.ts",
-    "clankergram": "node bin/clankergram.mjs",
+    "agentigram": "node bin/agentigram.mjs",
     "ui": "electron ui/main.cjs"
   },
   "dependencies": {
     "pino": "^10.3.1",
     "commander": "^14.0.3",
     "ws": "^8.21.3",
-    "@clankergram/protocol": "workspace:*",
-    "@clankergram/adapters": "workspace:*",
-    "@clankergram/mcp": "workspace:*",
-    "@clankergram/analysis": "workspace:*",
+    "@agentigram/protocol": "workspace:*",
+    "@agentigram/adapters": "workspace:*",
+    "@agentigram/mcp": "workspace:*",
+    "@agentigram/analysis": "workspace:*",
+    "@agentigram/coordinator": "workspace:*",
+    "@agentigram/p2p": "workspace:*",
+    "@agentigram/reducer": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@parcel/watcher": "2.6.0",
     "tsx": "^4.23.13",
@@ -26,10 +29,10 @@
   },
   "devDependencies": {
     "@types/ws": "^8.18.1",
-    "@clankergram/simulator": "workspace:*",
+    "@agentigram/simulator": "workspace:*",
     "electron": "38.8.6"
   },
   "bin": {
-    "clankergram": "./bin/clankergram.mjs"
+    "agentigram": "./bin/agentigram.mjs"
   }
 }

@@ -1,5 +1,5 @@
 import { exports } from 'cloudflare:workers';
-import type { Event, NewEvent, Payload, ServerMessage } from '@clankergram/protocol';
+import type { Event, NewEvent, Payload, ServerMessage } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 
 // The Cloudflare test runtime exposes the worker's default export here; the generated `Exports`

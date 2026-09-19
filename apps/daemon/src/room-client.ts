@@ -1,4 +1,4 @@
-import { redactPayload } from '@clankergram/adapters';
+import { redactPayload } from '@agentigram/adapters';
 import {
   type ClientKind,
   type Event,
@@ -7,7 +7,7 @@ import {
   type RoomState,
   ServerMessageSchema,
   ValidationError,
-} from '@clankergram/protocol';
+} from '@agentigram/protocol';
 import WebSocket from 'ws';
 import type { Cursor } from './cursor-store.js';
 

@@ -8,12 +8,13 @@ export const runtimeKey = (root: string): string =>
 /** IPC endpoint: a Unix socket under the runtime dir, or a named pipe on Windows (Node cannot listen on a `.sock` path there). */
 export const isPipe = (path: string): boolean => path.startsWith('\\\\.\\pipe\\');
 
-export function runtimePaths(root: string, base = join(homedir(), '.clankergram')) {
+export function runtimePaths(root: string, base = join(homedir(), '.agentigram')) {
   const key = runtimeKey(root);
   return {
     base,
     state: join(base, 'installations', `${key}.json`),
+    p2pStorage: join(base, 'p2p', key),
     socket:
-      process.platform === 'win32' ? `\\\\.\\pipe\\clankergram-${key}` : join(base, `${key}.sock`),
+      process.platform === 'win32' ? `\\\\.\\pipe\\agentigram-${key}` : join(base, `${key}.sock`),
   };
 }

@@ -1,5 +1,5 @@
-import { DEFAULT_PERSONAS, type PersonaLine, render } from '@clankergram/personas';
-import { EventSchema } from '@clankergram/protocol';
+import { DEFAULT_PERSONAS, type PersonaLine, render } from '@agentigram/personas';
+import { EventSchema } from '@agentigram/protocol';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 

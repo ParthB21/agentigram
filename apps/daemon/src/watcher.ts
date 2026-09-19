@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { relative, sep } from 'node:path';
-import { apiDelta } from '@clankergram/analysis';
-import type { NewEvent } from '@clankergram/protocol';
+import { apiDelta } from '@agentigram/analysis';
+import type { NewEvent } from '@agentigram/protocol';
 import { type AsyncSubscription, subscribe } from '@parcel/watcher';
 
 const WATCH_DEBOUNCE_MS = 150;

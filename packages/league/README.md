@@ -1,4 +1,4 @@
-# @clankergram/league
+# @agentigram/league
 
 **Owner:** Part 4
 

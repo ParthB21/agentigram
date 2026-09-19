@@ -1,4 +1,4 @@
-# @clankergram/analysis
+# @agentigram/analysis
 
 **Owner:** Part 3
 
@@ -28,7 +28,7 @@ Exports *declared* in a module (re-exports and barrels are followed to the decla
 members of classes, interfaces, object-type aliases and enums (inherited members included, since
 they are part of the subtype's surface); explicit constructors (`Class.constructor`); static members
 (`Class.static$name`). Left out: private / `#private` members, anything from lib or `node_modules`,
-union-type aliases' members. Keys come from `symbolKey` in `@clankergram/protocol`.
+union-type aliases' members. Keys come from `symbolKey` in `@agentigram/protocol`.
 
 ### Signatures
 

@@ -1,4 +1,4 @@
-import type { Event } from '@clankergram/protocol';
+import type { Event } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_PERSONAS, render } from './index.js';
 
@@ -12,7 +12,7 @@ const event = (seq: number, payload: Event['payload']): Event => ({
   payload,
 });
 
-describe('@clankergram/personas', () => {
+describe('@agentigram/personas', () => {
   it('renders ordered dialogue linked to source sequences', async () => {
     const lines = await render(
       [

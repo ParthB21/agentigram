@@ -1,5 +1,5 @@
-import { buildToolDefs } from '@clankergram/mcp';
-import { MCP_TOOL_NAMES } from '@clankergram/protocol';
+import { buildToolDefs } from '@agentigram/mcp';
+import { MCP_TOOL_NAMES } from '@agentigram/protocol';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -9,7 +9,7 @@ const MCP_REQUEST_TIMEOUT_MS = 2_000;
 
 export async function runMcpServer(socketPath: string, sessionId: string): Promise<void> {
   const server = new Server(
-    { name: 'clankergram', version: '0.1.0' },
+    { name: 'agentigram', version: '0.1.0' },
     { capabilities: { tools: {} } },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: buildToolDefs() }));

@@ -1,4 +1,4 @@
-import { type Event, emptyRoomState, type Payload } from '@clankergram/protocol';
+import { type Event, emptyRoomState, type Payload } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { reduce } from './index.js';
 

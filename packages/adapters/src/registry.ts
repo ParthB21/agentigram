@@ -1,5 +1,6 @@
-import type { NewEvent } from '@clankergram/protocol';
+import type { NewEvent } from '@agentigram/protocol';
 import { ClaudeCodeAdapter } from './claude-code.js';
+import { CodexAdapter } from './codex.js';
 
 /** What an adapter needs to stamp events it produces. Ids and time never come from the adapter. */
 export type AdapterContext = {
@@ -32,7 +33,7 @@ export type HostInfo = {
  */
 export const HOST_CATALOG: readonly HostInfo[] = [
   { host: 'claude-code', displayName: 'Claude Code', mode: 'hooks', status: 'ready' },
-  { host: 'codex', displayName: 'Codex CLI', mode: 'degraded', status: 'planned' },
+  { host: 'codex', displayName: 'Codex CLI', mode: 'hooks', status: 'ready' },
   { host: 'cursor', displayName: 'Cursor', mode: 'degraded', status: 'planned' },
   { host: 'gemini-cli', displayName: 'Gemini CLI', mode: 'degraded', status: 'planned' },
 ];
@@ -55,7 +56,10 @@ class DegradedAdapter implements AgentAdapter {
 
 export type AdapterFactory = () => AgentAdapter;
 
-const factories = new Map<string, AdapterFactory>([['claude-code', () => new ClaudeCodeAdapter()]]);
+const factories = new Map<string, AdapterFactory>([
+  ['claude-code', () => new ClaudeCodeAdapter()],
+  ['codex', () => new CodexAdapter()],
+]);
 
 /** Registers or replaces an adapter for a host (how Part 2 plugs real adapters in). */
 export function registerAdapter(host: string, factory: AdapterFactory): void {

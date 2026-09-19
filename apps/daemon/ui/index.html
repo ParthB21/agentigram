@@ -4,80 +4,40 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; style-src 'self'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Clankergram</title>
+    <title>Agentigram</title>
     <link rel="icon" href="favicon.svg" />
     <link rel="stylesheet" href="styles.css" />
+    <script src="renderer.js" defer></script>
   </head>
   <body>
     <main class="window">
-      <header class="titlebar">
-        <div class="brand">
-          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span><strong>Clankergram</strong><small>hackathon</small></span>
-        </div>
-        <span class="connection"><i class="status-dot"></i>Local daemon</span>
+      <header>
+        <div class="brand"><span class="mark" aria-hidden="true"></span><strong>Agentigram</strong></div>
+        <span class="status"><i></i><span id="connection">Connecting</span></span>
       </header>
 
       <div class="content">
-        <section class="conversation" aria-labelledby="conversation-title">
-          <div class="heading">
-            <div>
-              <p class="eyebrow">Workspace · feature/user-uuid</p>
-              <h1 id="conversation-title">Agents are coordinating</h1>
-              <span class="heading-summary">One possible collision needs a decision.</span>
-            </div>
-            <div class="agent-stack" role="img" aria-label="Four agents online">
-              <span class="avatar-small backend">B</span><span class="avatar-small payments">P</span><span class="avatar-small frontend">F</span><span class="avatar-small security">S</span>
-            </div>
-          </div>
+        <p class="room" id="room">Local room</p>
+        <h1 id="headline">Waiting for the local daemon</h1>
+        <p class="summary" id="summary">Agent coordination will appear here.</p>
 
-          <div class="messages">
-            <article class="message">
-              <span class="identity backend">B</span>
-              <div>
-                <p><strong>Backend</strong><time>14:31</time></p>
-                <span class="message-copy">I’m changing <code>User.id</code> from a number to a UUID.</span>
-              </div>
-            </article>
-            <article class="message response">
-              <span class="identity payments">P</span>
-              <div>
-                <p><strong>Payments</strong><time>14:32</time></p>
-                <span class="message-copy">Checkout reads that field. I’ll hold my next write until we agree on the contract.</span>
-              </div>
-            </article>
-          </div>
+        <div class="agents" id="agents" aria-live="polite"></div>
 
-          <article class="collision">
-            <span class="collision-icon" aria-hidden="true">⌁</span>
-            <div>
-              <p><strong>Possible breaking change</strong><span class="confidence">Predicted · 86%</span></p>
-              <code>src/types/user.ts#User.id</code>
-            </div>
-            <button type="button">Review</button>
-          </article>
-        </section>
+        <div class="issue" id="issue" hidden>
+          <span class="issue-mark">!</span>
+          <div><strong id="issue-title"></strong><small id="issue-detail"></small></div>
+        </div>
 
-        <section class="activity" aria-labelledby="activity-title">
-          <div class="section-title">
-            <h2 id="activity-title">Recent activity</h2>
-            <span class="observed">Observed locally</span>
-          </div>
-          <ol>
-            <li><time>14:31</time><i class="blue"></i><p><strong>Backend</strong> announced an interface change</p></li>
-            <li><time>14:30</time><i class="violet"></i><p><strong>Payments</strong> read <code>checkout.ts</code></p></li>
-            <li><time>14:29</time><i class="green"></i><p>All contracts verified</p></li>
-          </ol>
-        </section>
+        <div class="invite" id="invite-row" hidden>
+          <code id="invite"></code>
+          <button id="copy" type="button">Copy invite</button>
+        </div>
       </div>
 
-      <footer>
-        <span><i class="status-dot"></i>4 agents online</span>
-        <span>Connected</span>
-      </footer>
+      <footer><span id="sequence">No events yet</span><button id="dashboard" type="button">Open dashboard</button></footer>
     </main>
   </body>
 </html>

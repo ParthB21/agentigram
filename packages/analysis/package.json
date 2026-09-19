@@ -1,5 +1,5 @@
 {
-  "name": "@clankergram/analysis",
+  "name": "@agentigram/analysis",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,10 +15,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@clankergram/protocol": "workspace:*",
+    "@agentigram/protocol": "workspace:*",
     "typescript": "~5.9.3"
   },
   "devDependencies": {
-    "@clankergram/simulator": "workspace:*"
+    "@agentigram/simulator": "workspace:*"
   }
 }

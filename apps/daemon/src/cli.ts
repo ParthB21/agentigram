@@ -1,17 +1,29 @@
-import { spawn, spawnSync } from 'node:child_process';
-import { resolve } from 'node:path';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createCapability, decodeInvite } from '@agentigram/p2p';
 import { Command } from 'commander';
 import pino from 'pino';
 import { CursorStore } from './cursor-store.js';
 import { LaptopDaemon } from './daemon.js';
-import { install, readInstallState, uninstall, writeInstallState } from './install.js';
+import { runLocalDemo } from './demo.js';
+import {
+  type InstallState,
+  install,
+  readInstallState,
+  uninstall,
+  writeInstallState,
+} from './install.js';
 import { DEFAULT_HOOK_TIMEOUT_MS, PRE_TOOL_TIMEOUT_MS, requestIpc } from './ipc.js';
 import { runMcpServer } from './mcp-server.js';
 import { RoomClient } from './room-client.js';
 import { summarise } from './summary.js';
 
-const executable = fileURLToPath(new URL('../bin/clankergram.mjs', import.meta.url));
+const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
+const DAEMON_START_TIMEOUT_MS = 15_000;
+const DAEMON_POLL_MS = 100;
 
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return '';
@@ -20,77 +32,176 @@ async function readStdin(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
-function requiredState(root: string) {
+function requiredState(root: string): InstallState {
   const state = readInstallState(root);
-  if (!state) throw new Error(`Clankergram is not joined in ${root}`);
+  if (!state) throw new Error(`Agentigram is not joined in ${root}`);
   return state;
 }
 
+function host(value: string): InstallState['host'] {
+  if (value === 'claude' || value === 'claude-code') return 'claude-code';
+  if (value === 'codex') return 'codex';
+  throw new Error('--host must be claude or codex');
+}
+
+function verifyHost(value: InstallState['host']): void {
+  const binary = value === 'codex' ? 'codex' : 'claude';
+  const detected = spawnSync(binary, ['--version'], { stdio: 'ignore' });
+  if (detected.error || detected.status !== 0) {
+    throw new Error(`${binary} was not found on PATH; install it before joining`);
+  }
+}
+
+function repositoryFingerprint(root: string): string {
+  const absolute = resolve(root);
+  let identity: string;
+  try {
+    identity = execFileSync('git', ['config', '--get', 'remote.origin.url'], {
+      cwd: absolute,
+      encoding: 'utf8',
+    }).trim();
+  } catch {
+    identity = '';
+  }
+  if (!identity) {
+    identity = `${basename(absolute)}:${execFileSync('git', ['rev-list', '--max-parents=0', 'HEAD'], { cwd: absolute, encoding: 'utf8' }).trim()}`;
+  }
+  return createHash('sha256')
+    .update(identity.replace(/\.git$/, '').toLowerCase())
+    .digest('hex');
+}
+
+function startDaemon(state: InstallState): void {
+  const child = spawn(process.execPath, [executable, 'daemon', '--root', state.root], {
+    detached: true,
+    stdio: 'ignore',
+  });
+  child.unref();
+  state.pid = child.pid;
+  writeInstallState(state);
+}
+
+async function waitForDaemon(state: InstallState): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + DAEMON_START_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const response = await requestIpc(state.socketPath, { type: 'status' }, DAEMON_POLL_MS);
+      if (response.ok && response.output && typeof response.output === 'object') {
+        return response.output as Record<string, unknown>;
+      }
+    } catch {
+      await new Promise((resolve) => setTimeout(resolve, DAEMON_POLL_MS));
+    }
+  }
+  throw new Error(
+    'daemon did not become ready; run `agentigram daemon --root <path>` to inspect logs',
+  );
+}
+
 export function buildProgram(): Command {
-  const program = new Command('clankergram')
-    .description('Clankergram: coordination for coding agents on different laptops.')
-    .version('0.1.0');
+  const program = new Command('agentigram')
+    .description('Agentigram: autonomous coding-agent coordination across laptops.')
+    .version('0.2.0');
 
   program
-    .command('join <teamCode>')
-    .description('Install local Claude Code hooks and join a team room.')
+    .command('create')
+    .description('Create a P2P room on this authority laptop.')
     .option('--root <path>', 'repository root', process.cwd())
-    .option('--coordinator <url>', 'coordinator URL', 'ws://localhost:8787')
+    .option('--room <id>', 'room identifier', 'hackathon')
+    .requiredOption('--session <id>', 'local agent session name')
+    .option('--host <host>', 'claude or codex', 'claude')
     .option('--engineer <id>', 'engineer identifier')
-    .option(
-      '--token <secret>',
-      'coordinator room secret (or CLANKERGRAM_TOKEN); default: the team code',
-    )
     .action(
-      (
-        teamCode: string,
-        opts: { root: string; coordinator: string; engineer?: string; token?: string },
-      ) => {
-        const detected = spawnSync('claude', ['--version'], { stdio: 'ignore' });
-        if (detected.error || detected.status !== 0) {
-          throw new Error('Claude Code was not found on PATH; install it before joining');
-        }
+      async (options: {
+        root: string;
+        room: string;
+        session: string;
+        host: string;
+        engineer?: string;
+      }) => {
+        const root = resolve(options.root);
+        const selectedHost = host(options.host);
+        verifyHost(selectedHost);
         const state = install({
-          root: opts.root,
-          teamCode,
-          coordinator: opts.coordinator,
-          engineerId: opts.engineer,
-          token: opts.token ?? process.env.CLANKERGRAM_TOKEN,
+          root,
+          roomId: options.room,
+          mode: 'authority',
+          host: selectedHost,
+          sessionId: options.session,
+          repositoryFingerprint: repositoryFingerprint(root),
+          capability: createCapability(),
+          engineerId: options.engineer,
         });
-        const child = spawn(process.execPath, [executable, 'daemon', '--root', state.root], {
-          detached: true,
-          stdio: 'ignore',
+        startDaemon(state);
+        const status = await waitForDaemon(state);
+        console.log(`Created room ${state.roomId}.`);
+        console.log(`Invite: ${String(status.invite)}`);
+        if (selectedHost === 'codex')
+          console.log('Open /hooks in Codex and trust the Agentigram hooks.');
+      },
+    );
+
+  program
+    .command('join <invite>')
+    .description('Join a P2P room from another laptop.')
+    .option('--root <path>', 'repository root', process.cwd())
+    .requiredOption('--session <id>', 'local agent session name')
+    .option('--host <host>', 'claude or codex', 'codex')
+    .option('--engineer <id>', 'engineer identifier')
+    .action(
+      async (
+        inviteUri: string,
+        options: { root: string; session: string; host: string; engineer?: string },
+      ) => {
+        const root = resolve(options.root);
+        const invite = decodeInvite(inviteUri);
+        const fingerprint = repositoryFingerprint(root);
+        if (fingerprint !== invite.repositoryFingerprint) {
+          throw new Error('this invite belongs to a different Git repository');
+        }
+        const selectedHost = host(options.host);
+        verifyHost(selectedHost);
+        const state = install({
+          root,
+          roomId: invite.roomId,
+          mode: 'peer',
+          host: selectedHost,
+          sessionId: options.session,
+          repositoryFingerprint: fingerprint,
+          invite,
+          engineerId: options.engineer,
         });
-        child.unref();
-        state.pid = child.pid;
-        writeInstallState(state);
-        console.log(`Joined ${teamCode}. Daemon starting at ${state.socketPath}`);
+        startDaemon(state);
+        await waitForDaemon(state);
+        console.log(`Joined room ${state.roomId} as ${state.sessionId}.`);
+        if (selectedHost === 'codex')
+          console.log('Open /hooks in Codex and trust the Agentigram hooks.');
       },
     );
 
   program
     .command('leave')
-    .description('Stop Clankergram and restore local configuration exactly.')
+    .description('Stop Agentigram and restore local configuration exactly.')
     .option('--root <path>', 'repository root', process.cwd())
-    .action((opts: { root: string }) => {
-      const state = requiredState(resolve(opts.root));
+    .action((options: { root: string }) => {
+      const state = requiredState(resolve(options.root));
       if (state.pid) {
         try {
           process.kill(state.pid, 'SIGTERM');
         } catch {
-          // The daemon already stopped; configuration still needs restoring.
+          // A stopped daemon does not prevent exact configuration restoration.
         }
       }
       uninstall(state.root);
-      console.log(`Left ${state.teamCode}. Local configuration restored.`);
+      console.log(`Left ${state.roomId}. Local configuration restored.`);
     });
 
   program
     .command('daemon')
     .description('Run the local daemon in the foreground.')
     .option('--root <path>', 'repository root', process.cwd())
-    .action(async (opts: { root: string }) => {
-      const daemon = new LaptopDaemon(requiredState(resolve(opts.root)));
+    .action(async (options: { root: string }) => {
+      const daemon = new LaptopDaemon(requiredState(resolve(options.root)));
       await daemon.start();
       const stop = async () => {
         await daemon.stop();
@@ -102,21 +213,21 @@ export function buildProgram(): Command {
 
   program
     .command('hook <event>')
-    .description('Handle a Claude Code hook payload from stdin.')
+    .description('Handle an agent-host hook payload from stdin.')
     .requiredOption('--root <path>', 'repository root')
-    .action(async (event: string, opts: { root: string }) => {
+    .action(async (event: string, options: { root: string }) => {
       try {
-        const input = JSON.parse(await readStdin()) as unknown;
-        const state = requiredState(resolve(opts.root));
+        const input = JSON.parse(await readStdin()) as never;
+        const state = requiredState(resolve(options.root));
         const response = await requestIpc(
           state.socketPath,
-          { type: 'hook', event, input: input as never },
+          { type: 'hook', event, input },
           event === 'PreToolUse' ? PRE_TOOL_TIMEOUT_MS : DEFAULT_HOOK_TIMEOUT_MS,
         );
         process.stdout.write(`${JSON.stringify(response.ok ? (response.output ?? {}) : {})}\n`);
       } catch (error) {
         process.stderr.write(
-          `Clankergram hook unavailable: ${error instanceof Error ? error.message : error}\n`,
+          `Agentigram hook unavailable: ${error instanceof Error ? error.message : error}\n`,
         );
         process.stdout.write('{}\n');
       }
@@ -126,32 +237,22 @@ export function buildProgram(): Command {
     .command('mcp')
     .description('Run the MCP stdio shim that forwards to the local daemon.')
     .option('--root <path>', 'repository root', process.cwd())
-    .option(
-      '--session <id>',
-      'agent session id',
-      process.env.CLAUDE_SESSION_ID ?? `mcp-${process.pid}`,
-    )
-    .action(async (opts: { root: string; session: string }) => {
-      await runMcpServer(requiredState(resolve(opts.root)).socketPath, opts.session);
+    .option('--session <id>', 'agent session id')
+    .action(async (options: { root: string; session?: string }) => {
+      const state = requiredState(resolve(options.root));
+      await runMcpServer(state.socketPath, options.session ?? state.sessionId);
     });
 
   program
     .command('status')
-    .description('Show local installation and daemon status.')
+    .description('Show installation, authority, and room status.')
     .option('--root <path>', 'repository root', process.cwd())
-    .action(async (opts: { root: string }) => {
-      const state = readInstallState(resolve(opts.root));
-      if (!state) {
-        console.log('Not joined.');
-        return;
-      }
+    .action(async (options: { root: string }) => {
+      const state = readInstallState(resolve(options.root));
+      if (!state) return void console.log('Not joined.');
       try {
-        const response = await requestIpc(state.socketPath, { type: 'status' }, 500);
-        const output =
-          response.ok && response.output && typeof response.output === 'object'
-            ? response.output
-            : {};
-        console.log(JSON.stringify({ installed: true, daemon: response.ok, ...output }, null, 2));
+        const output = await waitForDaemon(state);
+        console.log(JSON.stringify({ installed: true, daemon: true, ...output }, null, 2));
       } catch {
         console.log(
           JSON.stringify({ installed: true, daemon: false, roomId: state.roomId }, null, 2),
@@ -160,16 +261,42 @@ export function buildProgram(): Command {
     });
 
   program
+    .command('ui')
+    .description('Open the local macOS control window.')
+    .option('--root <path>', 'repository root', process.cwd())
+    .action(async (options: { root: string }) => {
+      const electron = createRequire(import.meta.url)('electron') as string;
+      const main = fileURLToPath(new URL('../ui/main.cjs', import.meta.url));
+      const child = spawn(electron, [main], {
+        detached: true,
+        stdio: 'ignore',
+        env: { ...process.env, AGENTIGRAM_ROOT: resolve(options.root) },
+      });
+      child.unref();
+    });
+
+  program
+    .command('demo')
+    .description('Run the P2P coordination slice on one laptop.')
+    .option('--scenario <name>', 'demo scenario', 'user-id-uuid')
+    .option('--peers <count>', 'number of local peers', '4')
+    .action(async (options: { scenario: string; peers: string }) => {
+      if (options.scenario !== 'user-id-uuid') throw new Error('only user-id-uuid is available');
+      const result = await runLocalDemo(Number(options.peers));
+      console.log(JSON.stringify(result, null, 2));
+    });
+
+  program
     .command('dev-connect')
-    .description('Connect to a coordinator (the simulator by default) and log its events.')
+    .description('Connect to the optional WebSocket coordinator or simulator.')
     .option('--url <url>', 'coordinator base URL', 'ws://localhost:8787')
     .option('--room <roomId>', 'room to join', 'hackathon')
-    .option('--session <sessionId>', 'act as this session (default: none, observe only)')
-    .option('--token <token>', 'auth token (the simulator accepts anything)', 'dev')
+    .option('--session <sessionId>', 'act as this session')
+    .option('--token <token>', 'room token', 'dev')
     .option('--cursor-dir <dir>', 'where to persist the last seen seq')
     .option('--from-start', 'ignore the saved cursor and replay from seq 0')
     .action(
-      (opts: {
+      (options: {
         url: string;
         room: string;
         session?: string;
@@ -177,18 +304,15 @@ export function buildProgram(): Command {
         cursorDir?: string;
         fromStart?: boolean;
       }) => {
-        const log = pino({ name: 'clankergram' }).child({
-          roomId: opts.room,
-          ...(opts.session ? { sessionId: opts.session } : {}),
-        });
-        const cursor = CursorStore.forRoom(opts.room, opts.cursorDir);
-        if (opts.fromStart) cursor.reset();
+        const log = pino({ name: 'agentigram' }).child({ roomId: options.room });
+        const cursor = CursorStore.forRoom(options.room, options.cursorDir);
+        if (options.fromStart) cursor.reset();
         const client = new RoomClient({
-          url: opts.url,
-          roomId: opts.room,
+          url: options.url,
+          roomId: options.room,
           client: 'daemon',
-          token: opts.token,
-          ...(opts.session ? { sessionId: opts.session } : {}),
+          token: options.token,
+          ...(options.session ? { sessionId: options.session } : {}),
           cursor,
           log,
           onWelcome: (state) => log.info({ seq: state.lastSeq }, 'welcome'),

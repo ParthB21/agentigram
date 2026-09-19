@@ -3,11 +3,12 @@ import {
   type ErrorCode,
   type Event,
   emptyRoomState,
+  type NewEvent,
   NewEventSchema,
   type RoomState,
   type ServerMessage,
-} from '@clankergram/protocol';
-import { type Effect, type Presence, presenceMap, reduce } from '@clankergram/reducer';
+} from '@agentigram/protocol';
+import { type Effect, type Presence, presenceMap, reduce } from '@agentigram/reducer';
 import { authorizeSubmit, type Origin } from './authz.js';
 import { canSee } from './routing.js';
 import type { EventStore } from './store.js';
@@ -24,7 +25,7 @@ export type CoreOptions = {
 };
 
 export type SubmitOutcome =
-  | { ok: true; event: Event; duplicate: boolean; effects: Effect[] }
+  | { ok: true; event: Event; events: Event[]; duplicate: boolean; effects: Effect[] }
   | { ok: false; code: ErrorCode; message: string; id?: string };
 
 /**
@@ -52,6 +53,10 @@ export class RoomCore {
 
   get head(): number {
     return this.state.lastSeq;
+  }
+
+  get currentState(): RoomState {
+    return structuredClone(this.state);
   }
 
   /** Snapshot + replay: the state a room wakes up with. */
@@ -97,19 +102,54 @@ export class RoomCore {
 
     // At-least-once in, exactly-once applied: a retry gets the original event back.
     const prior = this.store.getById(incoming.id);
-    if (prior) return { ok: true, event: prior, duplicate: true, effects: [] };
+    if (prior) return { ok: true, event: prior, events: [prior], duplicate: true, effects: [] };
 
-    this.lastTs = Math.max(this.lastTs, this.now());
-    const event: Event = {
-      ...incoming,
-      seq: this.state.lastSeq + 1,
-      ts: new Date(this.lastTs).toISOString(),
-    };
-    const { state, effects } = reduce(this.state, event);
-    this.store.append(event); // persist first: if this throws, in-memory state is untouched
-    this.state = state;
-    if (event.seq % this.snapshotEvery === 0) this.store.saveSnapshot(event.seq, state);
-    return { ok: true, event, duplicate: false, effects };
+    const fencingError = this.validateFencing(incoming, origin);
+    if (fencingError) return fail('UNAUTHORIZED', fencingError);
+
+    const before = this.state;
+    const primary = this.append(incoming);
+    const event = primary.event;
+    const events = [event];
+    const effects = [...primary.effects];
+    for (const derived of this.derive(event, before, origin)) {
+      const applied = this.append(derived);
+      events.push(applied.event);
+      effects.push(...applied.effects);
+    }
+    return { ok: true, event, events, duplicate: false, effects };
+  }
+
+  /** Authority-side expiry. Call from a Durable Object alarm or the local authority timer. */
+  expireLeases(at = this.now()): Event[] {
+    const expired = Object.values(this.state.leases).filter(
+      (lease) => Date.parse(lease.expiresAt) <= at,
+    );
+    return expired.map(
+      (lease) =>
+        this.append({
+          id: `lease-expired:${lease.leaseId}:${at}`,
+          roomId: this.roomId,
+          actor: { engineerId: 'authority', kind: 'system' },
+          source: 'system',
+          payload: { type: 'LEASE_EXPIRED', leaseId: lease.leaseId, reason: 'ttl' },
+        }).event,
+    );
+  }
+
+  expireSessionLeases(sessionId: string, reason: 'disconnect' | 'overridden'): Event[] {
+    return Object.values(this.state.leases)
+      .filter((lease) => lease.sessionId === sessionId)
+      .map(
+        (lease) =>
+          this.append({
+            id: `lease-expired:${lease.leaseId}:${reason}:${this.now()}`,
+            roomId: this.roomId,
+            actor: { engineerId: 'authority', kind: 'system' },
+            source: 'system',
+            payload: { type: 'LEASE_EXPIRED', leaseId: lease.leaseId, reason },
+          }).event,
+      );
   }
 
   /** WELCOME plus the gap after `lastSeq` (batched), filtered for what `kind` may see. */
@@ -162,4 +202,102 @@ export class RoomCore {
   eventsAfter(seq: number, limit?: number): Event[] {
     return this.store.after(seq, limit);
   }
+
+  private append(input: NewEvent): { event: Event; effects: Effect[] } {
+    this.lastTs = Math.max(this.lastTs + 1, this.now());
+    const event: Event = {
+      ...input,
+      seq: this.state.lastSeq + 1,
+      ts: new Date(this.lastTs).toISOString(),
+    };
+    const result = reduce(this.state, event);
+    this.store.append(event);
+    this.state = result.state;
+    if (event.seq % this.snapshotEvery === 0) this.store.saveSnapshot(event.seq, result.state);
+    return { event, effects: result.effects };
+  }
+
+  private derive(event: Event, before: RoomState, origin: Origin): NewEvent[] {
+    if (origin.kind === 'system') return [];
+    if (event.payload.type === 'LEASE_REQUESTED') {
+      const payload = event.payload;
+      const sessionId = event.actor.sessionId;
+      if (!sessionId) return [];
+      const held = Object.values(before.leases).find((lease) =>
+        lease.symbols.some((symbol) => payload.symbols.includes(symbol)),
+      );
+      if (held) {
+        return [
+          {
+            id: `${event.id}:denied`,
+            roomId: this.roomId,
+            actor: { engineerId: 'authority', kind: 'system' },
+            causedBy: event.seq,
+            source: 'system',
+            payload: {
+              type: 'LEASE_DENIED',
+              symbols: payload.symbols,
+              heldBy: held.sessionId,
+              leaseId: held.leaseId,
+              reason: 'one or more symbols are already leased',
+            },
+          },
+        ];
+      }
+      const leaseId = `${this.roomId}:${event.seq}`;
+      return [
+        {
+          id: `${event.id}:granted`,
+          roomId: this.roomId,
+          actor: { engineerId: 'authority', kind: 'system' },
+          causedBy: event.seq,
+          source: 'system',
+          payload: {
+            type: 'LEASE_GRANTED',
+            leaseId,
+            sessionId,
+            symbols: payload.symbols,
+            fencingToken: event.seq,
+            expiresAt: new Date(Date.parse(event.ts) + payload.ttlMs).toISOString(),
+            ttlMs: payload.ttlMs,
+          },
+        },
+      ];
+    }
+    if (event.payload.type === 'SESSION_ENDED') {
+      const payload = event.payload;
+      return Object.values(before.leases)
+        .filter((lease) => lease.sessionId === payload.sessionId)
+        .map((lease) => ({
+          id: `${event.id}:expired:${lease.leaseId}`,
+          roomId: this.roomId,
+          actor: { engineerId: 'authority', kind: 'system' as const },
+          causedBy: event.seq,
+          source: 'system' as const,
+          payload: {
+            type: 'LEASE_EXPIRED' as const,
+            leaseId: lease.leaseId,
+            reason: 'session_ended' as const,
+          },
+        }));
+    }
+    return [];
+  }
+
+  private validateFencing(event: NewEvent, origin: Origin): string | undefined {
+    if (origin.kind === 'system') return undefined;
+    if (event.payload.type !== 'FILE_WRITE') return undefined;
+    const path = normalisePath(event.payload.path);
+    const lease = Object.values(this.state.leases).find((candidate) =>
+      candidate.symbols.some((symbol) => normalisePath(symbol.split('#')[0] ?? '') === path),
+    );
+    if (!lease) return undefined;
+    if (event.actor.sessionId !== lease.sessionId) return `path is leased by ${lease.sessionId}`;
+    if (event.payload.fencingToken !== lease.fencingToken) {
+      return `stale fencing token for lease ${lease.leaseId}`;
+    }
+    return undefined;
+  }
 }
+
+const normalisePath = (path: string): string => path.replaceAll('\\\\', '/').replace(/^\.\//, '');

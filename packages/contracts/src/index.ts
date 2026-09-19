@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Contract } from '@clankergram/protocol';
+import type { Contract } from '@agentigram/protocol';
 
 export type CheckFile = { path: string; content: string };
 export type CompiledContract = { contractId: string; checkFiles: CheckFile[] };

@@ -1,4 +1,4 @@
-import type { Event, MarketState } from '@clankergram/protocol';
+import type { Event, MarketState } from '@agentigram/protocol';
 
 const DEFAULT_LIQUIDITY = 100;
 export const STARTING_POINTS = 1_000;

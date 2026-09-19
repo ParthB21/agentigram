@@ -1,4 +1,4 @@
-# @clankergram/specmerge
+# @agentigram/specmerge
 
 **Owner:** Part 3
 

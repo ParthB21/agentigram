@@ -1,8 +1,8 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { createConnection, createServer, type Server, type Socket } from 'node:net';
 import { dirname } from 'node:path';
-import { ClaudeHookInputSchema } from '@clankergram/adapters';
-import { MCP_TOOL_NAMES } from '@clankergram/protocol';
+import { ClaudeHookInputSchema, CodexHookInputSchema } from '@agentigram/adapters';
+import { MCP_TOOL_NAMES } from '@agentigram/protocol';
 import { z } from 'zod';
 import { isPipe } from './runtime.js';
 
@@ -13,9 +13,21 @@ export const DEFAULT_HOOK_TIMEOUT_MS = 1000;
 const HookRequestSchema = z.object({
   type: z.literal('hook'),
   event: z.string(),
-  input: ClaudeHookInputSchema,
+  input: z.union([ClaudeHookInputSchema, CodexHookInputSchema]),
 });
 const StatusRequestSchema = z.object({ type: z.literal('status') });
+const HumanRequestSchema = z.object({
+  type: z.literal('human'),
+  action: z.discriminatedUnion('type', [
+    z.object({ type: z.literal('release_lease'), leaseId: z.string().min(1) }),
+    z.object({ type: z.literal('accept_escalation'), collisionId: z.string().min(1) }),
+    z.object({
+      type: z.literal('escalate'),
+      collisionId: z.string().min(1),
+      reason: z.string().min(1).max(500),
+    }),
+  ]),
+});
 const ToolRequestSchema = z.object({
   type: z.literal('tool'),
   name: z.enum(MCP_TOOL_NAMES),
@@ -25,6 +37,7 @@ const ToolRequestSchema = z.object({
 export const IpcRequestSchema = z.discriminatedUnion('type', [
   HookRequestSchema,
   StatusRequestSchema,
+  HumanRequestSchema,
   ToolRequestSchema,
 ]);
 export type IpcRequest = z.infer<typeof IpcRequestSchema>;

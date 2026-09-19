@@ -1,21 +1,21 @@
-# @clankergram/daemon
+# @agentigram/daemon
 
 **Owner:** Part 2
 
-`clankergram` CLI + local daemon. M1 installs Claude Code hooks and a private, local-scoped MCP
-server, receives hook events over a fail-open Unix socket, watches worktrees, reconnects to the room
-coordinator, and restores every modified file exactly on `leave`.
+`agentigram` CLI + local daemon. It hosts or joins an encrypted P2P room, installs Claude Code or
+Codex hooks and a private MCP server, watches the worktree, enforces leases before edits, injects
+labelled peer context, and restores every modified configuration file on `leave`.
 
 ## Commands
 
 ```bash
-pnpm clankergram join hackathon
-pnpm clankergram status
-pnpm clankergram daemon --root /path/to/repo
-pnpm clankergram leave
-
-# Static macOS Electron shell; intentionally not wired to the daemon yet.
-pnpm --filter @clankergram/daemon ui
+pnpm agentigram demo --peers 4
+pnpm agentigram create --root . --session backend --host claude
+pnpm agentigram join '<invite>' --root . --session payments --host codex
+pnpm agentigram status
+pnpm agentigram daemon --root /path/to/repo
+pnpm agentigram leave
+pnpm agentigram ui --root .
 ```
 
 ## Verified external interfaces
@@ -34,6 +34,10 @@ Checked against official documentation on 2026-09-19:
 - MCP TypeScript SDK 1.30.0: low-level `Server` request handlers with `StdioServerTransport`.
 - Electron 38.8.6: secure `BrowserWindow` with context isolation, sandboxing, no Node integration,
   a preload boundary, CSP, and the standard macOS application lifecycle.
+- Codex hooks: project `.codex/hooks.json`, command hooks for lifecycle/tool events, and the current
+  `PreToolUse` permission-decision contract. Codex requires the generated hooks to be trusted.
+- Pear/Holepunch modules: Hyperswarm 4.17.1, Corestore 7.12.5, Protomux 3.12.0 and
+  compact-encoding 3.5.0. The full Pear runtime is not required.
 - `@parcel/watcher` 2.6.0 for native recursive worktree observation.
 
 The hook payload fixtures are secret-free representations of the documented current shapes, not
@@ -41,15 +45,15 @@ payloads captured from a live Claude Code session (capturing real ones is still 
 
 ## Integration with Parts 1 and 3
 
-- **Symbols:** `SymbolReader` (`src/symbol-reader.ts`) keeps one `@clankergram/analysis` `Indexer` per
+- **Symbols:** `SymbolReader` (`src/symbol-reader.ts`) keeps one `@agentigram/analysis` `Indexer` per
   repo and turns a Read into symbol keys. The index is warmed at `SessionStart`, so a hook never pays for
   a cold TypeScript program; a repo with no `tsconfig.json` degrades to FILE_READ without symbols.
 - **`apiDelta`** is still Part 3's M2 stub; the watcher logs it as unavailable and emits no `API_DELTA`.
-- **Coordinator auth:** `join --token <secret>` (or `CLANKERGRAM_TOKEN`) is the room secret the Part 1
-  coordinator checks at HELLO. Without it the token is the team code, which only the simulator accepts.
+- **Authority:** the room creator is the sole sequencer and lease authority. A capability-bearing
+  invite authenticates peers; authority loss is a read-only safe pause.
 - **Heartbeats** are events stamped `source: system`; the coordinator accepts that for `HEARTBEAT` only.
-- **Platforms:** macOS and Linux use a Unix socket at `~/.clankergram/<repo-hash>.sock`; Windows uses a
-  named pipe (`clankergram-<repo-hash>`), since Node cannot listen on a `.sock` file there.
+- **Platforms:** macOS and Linux use a Unix socket at `~/.agentigram/<repo-hash>.sock`; Windows uses a
+  named pipe (`agentigram-<repo-hash>`), since Node cannot listen on a `.sock` file there.
 - **Hook timeouts** in `.claude/settings.local.json` are whole seconds (the docs list integers); the
   300 ms PreToolUse budget is enforced by the hook process's own IPC timeout.
 

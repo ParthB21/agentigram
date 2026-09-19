@@ -2,10 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { buildProgram } from './cli.js';
 import { summarise } from './summary.js';
 
-describe('clankergram CLI', () => {
+describe('agentigram CLI', () => {
   it('--help lists the commands', () => {
     const help = buildProgram().helpInformation();
-    for (const cmd of ['dev-connect', 'join', 'leave', 'daemon', 'hook', 'mcp', 'status']) {
+    for (const cmd of [
+      'create',
+      'demo',
+      'dev-connect',
+      'join',
+      'leave',
+      'daemon',
+      'hook',
+      'mcp',
+      'status',
+      'ui',
+    ]) {
       expect(help).toContain(cmd);
     }
   });
@@ -17,10 +28,10 @@ describe('clankergram CLI', () => {
     );
   });
 
-  it('join exposes coordinator and engineer options', () => {
+  it('join exposes peer session and host options', () => {
     const command = buildProgram().commands.find((candidate) => candidate.name() === 'join');
     expect(command?.options.map((option) => option.long)).toEqual(
-      expect.arrayContaining(['--root', '--coordinator', '--engineer']),
+      expect.arrayContaining(['--root', '--session', '--host', '--engineer']),
     );
   });
 

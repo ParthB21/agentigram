@@ -1,4 +1,4 @@
-import type { ClientKind, NewEvent, PayloadType } from '@clankergram/protocol';
+import type { ClientKind, NewEvent, PayloadType } from '@agentigram/protocol';
 
 /** Who is submitting. `system` is the coordinator itself (alarms, tests) and bypasses authz. */
 export type Origin = { kind: ClientKind | 'system'; sessionId?: string };

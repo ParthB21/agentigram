@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { symbolKey } from '@clankergram/protocol';
+import { symbolKey } from '@agentigram/protocol';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { dependentsOf, Indexer, type RepoIndex, readSetFromFiles } from './index.js';
 

@@ -1,18 +1,55 @@
 import { execFileSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
-import { ClaudeCodeAdapter, type ClaudeHookInput } from '@clankergram/adapters';
-import { parseToolCall } from '@clankergram/mcp';
-import type { NewEvent } from '@clankergram/protocol';
+import { join } from 'node:path';
+import {
+  type AgentAdapter,
+  type ClaudeHookInput,
+  ClaudeHookInputSchema,
+  type CodexHookInput,
+  CodexHookInputSchema,
+  claudeToolPaths,
+  codexToolPaths,
+  createAdapter,
+  redactPayload,
+  wrapPeerData,
+} from '@agentigram/adapters';
+import { parseToolCall } from '@agentigram/mcp';
+import { P2PRoomTransport, type RoomTransport } from '@agentigram/p2p';
+import {
+  type Event,
+  emptyRoomState,
+  isAgentVisible,
+  type NewEvent,
+  NewEventSchema,
+  type RoomState,
+} from '@agentigram/protocol';
+import { reduce, routeEvent } from '@agentigram/reducer';
 import pino from 'pino';
+import { AuthorityTransport } from './authority-transport.js';
 import { CursorStore } from './cursor-store.js';
 import type { InstallState } from './install.js';
 import { createIpcServer, type IpcRequest, type IpcResponse } from './ipc.js';
-import { RoomClient } from './room-client.js';
+import { summarise } from './summary.js';
 import { SymbolReader } from './symbol-reader.js';
 import { WorktreeWatcher } from './watcher.js';
 
 const SESSION_HEARTBEAT_MS = 10_000;
 const AGENT_WRITE_MATCH_WINDOW_MS = 5_000;
+const MAX_INBOX_EVENTS = 20;
+const ACTIONABLE_TYPES = new Set([
+  'MESSAGE',
+  'COLLISION',
+  'LEASE_DENIED',
+  'PROPOSAL',
+  'COUNTER',
+  'ACCEPT',
+  'ESCALATE',
+  'CONTEXT_PACKET',
+  'CONTEXT_QUERY',
+  'CONTEXT_ANSWER',
+]);
+
+type HookInput = ClaudeHookInput | CodexHookInput;
 
 function branch(root: string): string {
   try {
@@ -26,66 +63,126 @@ function branch(root: string): string {
 }
 
 export class LaptopDaemon {
-  private readonly log = pino({ name: 'clankergram-daemon' });
+  private readonly log = pino({ name: 'agentigram-daemon' });
   private readonly sessions = new Set<string>();
   private readonly watchers = new Map<string, WorktreeWatcher>();
   private readonly recentAgentWrites = new Map<string, number>();
+  private readonly inbox = new Map<string, string[]>();
   private readonly symbols: SymbolReader;
-  private readonly adapter: ClaudeCodeAdapter;
-  private readonly client: RoomClient;
+  private readonly adapter: AgentAdapter;
+  private readonly transport: RoomTransport;
+  private readonly cursor;
+  private roomState: RoomState;
   private readonly server;
   private heartbeat: NodeJS.Timeout | undefined;
 
   constructor(private readonly state: InstallState) {
     this.symbols = new SymbolReader(state.root, this.log);
-    this.adapter = new ClaudeCodeAdapter(async (paths, cwd) => this.symbols.read(paths, cwd));
-    this.client = new RoomClient({
-      url: state.coordinator,
-      roomId: state.roomId,
-      client: 'daemon',
-      token: state.token ?? state.teamCode,
-      cursor: CursorStore.forRoom(state.roomId),
-      log: this.log,
-      onEvents: (events) =>
-        this.log.debug({ count: events.length, seq: events.at(-1)?.seq }, 'events applied'),
+    this.adapter = createAdapter(state.host);
+    this.cursor = CursorStore.forRoom(state.roomId);
+    this.roomState = emptyRoomState(state.roomId);
+    this.transport =
+      state.mode === 'authority'
+        ? new AuthorityTransport(state)
+        : new P2PRoomTransport({
+            invite: requiredInvite(state),
+            storage: join(state.p2pStorage, 'peer'),
+            client: 'daemon',
+            clientId: `${state.engineerId}:${state.sessionId}`,
+            sessionId: state.sessionId,
+            lastSeq: this.cursor.get(),
+          });
+    this.transport.onWelcome((roomState) => {
+      this.roomState = roomState;
+      this.cursor.set(roomState.lastSeq);
     });
+    this.transport.onEvents((events) => this.receive(events));
+    this.transport.onStatus((status) => this.log.info({ status }, 'transport status'));
     this.server = createIpcServer(state.socketPath, (request) => this.handle(request));
   }
 
   async start(): Promise<void> {
-    this.client.start();
+    await this.transport.start();
     await new Promise<void>((resolve, reject) => {
       this.server.once('error', reject);
       this.server.listen(this.state.socketPath, resolve);
     });
-    this.heartbeat = setInterval(() => this.sendHeartbeats(), SESSION_HEARTBEAT_MS);
-    this.log.info({ roomId: this.state.roomId, socket: this.state.socketPath }, 'daemon ready');
+    this.heartbeat = setInterval(
+      () => this.transport.heartbeat(this.state.sessionId),
+      SESSION_HEARTBEAT_MS,
+    );
+    this.log.info(
+      { roomId: this.state.roomId, socket: this.state.socketPath, mode: this.state.mode },
+      'daemon ready',
+    );
   }
 
   async stop(): Promise<void> {
     clearInterval(this.heartbeat);
     for (const watcher of this.watchers.values()) await watcher.stop();
-    this.client.stop();
+    await this.transport.stop();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
     rmSync(this.state.socketPath, { force: true });
   }
 
   private async handle(request: IpcRequest): Promise<IpcResponse> {
     if (request.type === 'status') {
-      return { ok: true, output: { roomId: this.state.roomId, sessions: [...this.sessions] } };
+      const authority = this.transport instanceof AuthorityTransport ? this.transport : undefined;
+      return {
+        ok: true,
+        output: {
+          roomId: this.state.roomId,
+          mode: this.state.mode,
+          host: this.state.host,
+          sessionId: this.state.sessionId,
+          transport: this.transport.status,
+          lastSeq: this.roomState.lastSeq,
+          sessions: [...this.sessions],
+          agents: Object.values(this.roomState.sessions),
+          leases: Object.values(this.roomState.leases),
+          collisions: Object.values(this.roomState.collisions).filter(
+            (collision) => collision.status === 'open',
+          ),
+          negotiations: Object.values(this.roomState.negotiations),
+          summary: this.roomState.teamSummary,
+          ...(authority?.inviteUri ? { invite: authority.inviteUri } : {}),
+        },
+      };
     }
+    if (request.type === 'human') return this.handleHumanAction(request.action);
     if (request.type === 'tool')
       return this.handleTool(request.name, request.args, request.sessionId);
-    const input = request.input as ClaudeHookInput;
+
+    const input = this.parseHook(request.input);
     if (input.hook_event_name !== request.event) {
       return { ok: false, error: 'hook event does not match hook payload' };
     }
-    const sessionId = input.session_id;
+    const sessionId = this.state.sessionId;
     if (input.hook_event_name === 'SessionStart') {
       this.sessions.add(sessionId);
       this.symbols.warm();
       await this.ensureWatcher(sessionId, input.cwd);
     }
+    if (input.hook_event_name === 'PreToolUse') {
+      const denial = this.editDenial(input);
+      if (denial) return { ok: true, output: preToolDecision('deny', denial) };
+      const context = this.drainInbox(sessionId);
+      if (context) return { ok: true, output: preToolContext(context) };
+    }
+    if (input.hook_event_name === 'Stop') {
+      const context = this.drainInbox(sessionId);
+      if (context) {
+        return {
+          ok: true,
+          output: {
+            continue: false,
+            stopReason: 'Agentigram has pending peer coordination',
+            systemMessage: context,
+          },
+        };
+      }
+    }
+
     const events = await this.adapter.normalize(input, {
       roomId: this.state.roomId,
       engineerId: this.state.engineerId,
@@ -95,32 +192,64 @@ export class LaptopDaemon {
       worktree: input.cwd,
     });
     for (const event of events) {
-      if (event.payload.type === 'FILE_WRITE') {
-        this.recordAgentWrite(event.payload.path);
-        this.symbols.markDirty([event.payload.path]);
+      const guarded = this.attachFencingToken(event);
+      if (guarded.payload.type === 'FILE_WRITE') {
+        this.recordAgentWrite(guarded.payload.path);
+        this.symbols.markDirty([guarded.payload.path]);
       }
-      this.submit(event);
+      await this.submit(guarded);
     }
     if (input.hook_event_name === 'SessionEnd') this.sessions.delete(sessionId);
+    if (input.hook_event_name === 'SessionStart') {
+      return { ok: true, output: sessionContext(this.syncSummary()) };
+    }
     return { ok: true, output: {} };
   }
 
-  private handleTool(name: string, args: unknown, sessionId: string): IpcResponse {
-    const call = parseToolCall(name, args);
-    if (call.name === 'sync') {
-      return {
-        ok: true,
-        output: {
-          roomId: this.state.roomId,
-          activeSessions: [...this.sessions],
-          note: 'Live coordination events are delivered by hooks as they arrive.',
-        },
-      };
+  private async handleHumanAction(
+    action:
+      | { type: 'release_lease'; leaseId: string }
+      | { type: 'accept_escalation'; collisionId: string }
+      | { type: 'escalate'; collisionId: string; reason: string },
+  ): Promise<IpcResponse> {
+    if (!(this.transport instanceof AuthorityTransport)) {
+      return { ok: false, error: 'human decisions must be submitted on the authority laptop' };
     }
     const common = {
       id: crypto.randomUUID(),
       roomId: this.state.roomId,
-      actor: { engineerId: this.state.engineerId, sessionId, kind: 'agent' as const },
+      actor: { engineerId: this.state.engineerId, kind: 'human' as const },
+      source: 'mcp' as const,
+    };
+    const event: NewEvent =
+      action.type === 'release_lease'
+        ? { ...common, payload: { type: 'LEASE_RELEASED', leaseId: action.leaseId } }
+        : action.type === 'accept_escalation'
+          ? { ...common, payload: { type: 'ACCEPT', collisionId: action.collisionId } }
+          : {
+              ...common,
+              payload: {
+                type: 'ESCALATE',
+                collisionId: action.collisionId,
+                reason: action.reason,
+              },
+            };
+    const seq = await this.transport.submitAsHuman(event);
+    return { ok: true, output: { seq } };
+  }
+
+  private async handleTool(name: string, args: unknown, sessionId: string): Promise<IpcResponse> {
+    const call = parseToolCall(name, args);
+    if (call.name === 'sync') return { ok: true, output: this.syncSummary() };
+    const actingSession = sessionId || this.state.sessionId;
+    const common = {
+      id: crypto.randomUUID(),
+      roomId: this.state.roomId,
+      actor: {
+        engineerId: this.state.engineerId,
+        sessionId: actingSession,
+        kind: 'agent' as const,
+      },
       source: 'mcp' as const,
     };
     let event: NewEvent;
@@ -181,19 +310,111 @@ export class LaptopDaemon {
       default:
         return { ok: false, error: `unsupported tool: ${name}` };
     }
-    this.submit(event);
+    await this.submit(event);
+    if (call.name === 'announce_intent' && call.args.symbols.length > 0) {
+      await this.submit({
+        ...common,
+        id: crypto.randomUUID(),
+        payload: { type: 'LEASE_REQUESTED', symbols: call.args.symbols, ttlMs: 10 * 60 * 1000 },
+      });
+    }
+    if (call.name === 'claim_complete') {
+      for (const lease of Object.values(this.roomState.leases)) {
+        if (lease.sessionId === actingSession) {
+          await this.submit({
+            ...common,
+            id: crypto.randomUUID(),
+            payload: { type: 'LEASE_RELEASED', leaseId: lease.leaseId },
+          });
+        }
+      }
+    }
     return { ok: true, output: { accepted: true, eventId: event.id, type: event.payload.type } };
   }
 
-  private submit(event: NewEvent): void {
-    void this.client
-      .submit(event)
-      .catch((error) =>
-        this.log.warn(
-          { err: error instanceof Error ? error.message : String(error) },
-          'submit failed',
-        ),
+  private parseHook(input: unknown): HookInput {
+    return this.state.host === 'codex'
+      ? CodexHookInputSchema.parse(input)
+      : ClaudeHookInputSchema.parse(input);
+  }
+
+  private receive(events: Event[]): void {
+    for (const event of events.sort((a, b) => a.seq - b.seq)) {
+      if (event.seq <= this.roomState.lastSeq) continue;
+      this.roomState = reduce(this.roomState, event).state;
+      this.cursor.set(event.seq);
+      if (
+        isAgentVisible(event.payload.type) &&
+        ACTIONABLE_TYPES.has(event.payload.type) &&
+        event.actor.sessionId !== this.state.sessionId &&
+        routeEvent(this.roomState, event).includes(this.state.sessionId)
+      ) {
+        const current = this.inbox.get(this.state.sessionId) ?? [];
+        current.push(summarise(event));
+        this.inbox.set(this.state.sessionId, current.slice(-MAX_INBOX_EVENTS));
+      }
+    }
+  }
+
+  private editDenial(input: HookInput): string | undefined {
+    const paths =
+      this.state.host === 'codex'
+        ? codexToolPaths(input as CodexHookInput)
+        : claudeToolPaths(input as ClaudeHookInput);
+    for (const path of paths) {
+      const lease = this.leaseForPath(path);
+      if (lease && lease.sessionId !== this.state.sessionId) {
+        return `${path} is leased by ${lease.sessionId}. Negotiate through Agentigram before editing.`;
+      }
+    }
+    return undefined;
+  }
+
+  private attachFencingToken(event: NewEvent): NewEvent {
+    if (event.payload.type !== 'FILE_WRITE') return event;
+    const lease = this.leaseForPath(event.payload.path);
+    return lease?.sessionId === this.state.sessionId
+      ? { ...event, payload: { ...event.payload, fencingToken: lease.fencingToken } }
+      : event;
+  }
+
+  private leaseForPath(path: string) {
+    const normalised = normalisePath(path);
+    return Object.values(this.roomState.leases).find((lease) =>
+      lease.symbols.some((symbol) => normalisePath(symbol.split('#')[0] ?? '') === normalised),
+    );
+  }
+
+  private drainInbox(sessionId: string): string | undefined {
+    const lines = this.inbox.get(sessionId);
+    if (!lines?.length) return undefined;
+    this.inbox.delete(sessionId);
+    return wrapPeerData({ from: 'room', kind: 'coordination', text: lines.join('\n') });
+  }
+
+  private syncSummary(): object {
+    return {
+      roomId: this.state.roomId,
+      authority: this.transport.status,
+      sessions: Object.values(this.roomState.sessions),
+      leases: Object.values(this.roomState.leases),
+      collisions: Object.values(this.roomState.collisions),
+      negotiations: Object.values(this.roomState.negotiations),
+      contracts: Object.values(this.roomState.contracts),
+    };
+  }
+
+  private async submit(event: NewEvent): Promise<void> {
+    try {
+      const safe = NewEventSchema.parse({ ...event, payload: redactPayload(event.payload) });
+      await this.transport.submit(safe);
+    } catch (error) {
+      this.log.warn(
+        { err: error instanceof Error ? error.message : String(error) },
+        'submit failed',
       );
+      throw error;
+    }
   }
 
   private recordAgentWrite(path: string): void {
@@ -211,7 +432,7 @@ export class LaptopDaemon {
       engineerId: this.state.engineerId,
       sessionId,
       root,
-      submit: (event) => this.submit(event),
+      submit: (event) => void this.submit(this.attachFencingToken(event)),
       onChange: (paths) => this.symbols.markDirty(paths),
       isRecentAgentWrite: (path) => {
         const writtenAt = this.recentAgentWrites.get(path);
@@ -223,16 +444,43 @@ export class LaptopDaemon {
     await watcher.start();
     this.watchers.set(root, watcher);
   }
+}
 
-  private sendHeartbeats(): void {
-    for (const sessionId of this.sessions) {
-      this.submit({
-        id: crypto.randomUUID(),
-        roomId: this.state.roomId,
-        actor: { engineerId: this.state.engineerId, sessionId, kind: 'agent' },
-        source: 'system',
-        payload: { type: 'HEARTBEAT', sessionId },
-      });
-    }
+function requiredInvite(state: InstallState) {
+  if (!state.invite) throw new Error('peer installation is missing its room invite');
+  if (state.invite.repositoryFingerprint !== state.repositoryFingerprint) {
+    throw new Error('room invite belongs to a different repository');
   }
+  return state.invite;
+}
+
+function normalisePath(path: string): string {
+  return path.replaceAll('\\\\', '/').replace(/^\.\//, '');
+}
+
+function preToolDecision(decision: 'deny', reason: string): object {
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'PreToolUse',
+      permissionDecision: decision,
+      permissionDecisionReason: reason,
+    },
+  };
+}
+
+function preToolContext(context: string): object {
+  return { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: context } };
+}
+
+function sessionContext(summary: object): object {
+  return {
+    hookSpecificOutput: {
+      hookEventName: 'SessionStart',
+      additionalContext: wrapPeerData({
+        from: 'authority',
+        kind: 'sync',
+        text: JSON.stringify(summary),
+      }),
+    },
+  };
 }

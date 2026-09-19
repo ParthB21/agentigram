@@ -3,7 +3,7 @@ import {
   isAgentVisible,
   type ServerMessage,
   ServerMessageSchema,
-} from '@clankergram/protocol';
+} from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { Room, type Sink } from './room.js';

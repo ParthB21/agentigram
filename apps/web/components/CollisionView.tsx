@@ -1,6 +1,6 @@
 'use client';
 
-import { prioritize } from '@clankergram/personas';
+import { prioritize } from '@agentigram/personas';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
 import { activeCollision, contract, demoEvents } from '../lib/demo-data';

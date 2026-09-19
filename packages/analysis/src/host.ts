@@ -54,7 +54,7 @@ export class RepoHost {
     return (
       !r.startsWith('..') &&
       !r.includes('node_modules/') &&
-      !r.startsWith('.clankergram/') &&
+      !r.startsWith('.agentigram/') &&
       !r.startsWith('.agentigram/')
     );
   }

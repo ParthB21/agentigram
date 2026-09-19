@@ -5,9 +5,9 @@
 ---
 
 ```text
-You own Part 4 of Clankergram: what the humans see and the maths behind it. Read CLAUDE.md, then these spec.md sections closely: Product in one page, Model intelligence, Prediction league (non-wagering), Presentation layer, Negotiation and the contract ledger, Data model and event schema, Team split.
+You own Part 4 of Agentigram: what the humans see and the maths behind it. Read CLAUDE.md, then these spec.md sections closely: Product in one page, Model intelligence, Prediction league (non-wagering), Presentation layer, Negotiation and the contract ledger, Data model and event schema, Team split.
 
-Your directories: apps/web, packages/league, packages/stats, packages/personas. Do not edit anything else. @clankergram/league is imported by Part 1's reducer, so it must be pure and deterministic (no Date.now, no Math.random, no I/O). @clankergram/stats may use randomness only through an injected seeded RNG.
+Your directories: apps/web, packages/league, packages/stats, packages/personas. Do not edit anything else. @agentigram/league is imported by Part 1's reducer, so it must be pure and deterministic (no Date.now, no Math.random, no I/O). @agentigram/stats may use randomness only through an injected seeded RNG.
 
 Principles:
 - Structured event = truth; banter = presentation. Every rendered line links to the seq of the event it depicts. Nothing you render ever reaches an agent.
@@ -15,7 +15,7 @@ Principles:
 - The dashboard is a pure view over the event stream plus Postgres history, so replay is free.
 
 M1 — Room view
-- apps/web (Next.js App Router, Tailwind, shadcn/ui, Motion, Recharts): a typed client for the wire protocol with resume from lastSeq; a client-side store that runs @clankergram/reducer over the stream so the UI shows exactly what the coordinator believes.
+- apps/web (Next.js App Router, Tailwind, shadcn/ui, Motion, Recharts): a typed client for the wire protocol with resume from lastSeq; a client-side store that runs @agentigram/reducer over the stream so the UI shows exactly what the coordinator believes.
 - /team/[teamId]: one card per agent (engineer, role, model, host, branch, task, status, lease badges, live activity pulse), a raw event feed with type filters, presence changes animated.
 - /team/[teamId]/timeline: the full ordered event log with a scrubber that replays state at any seq (run the reducer up to that seq). Load history from the coordinator's export NDJSON.
 - Visual quality matters: this is what judges look at. Define colour tokens once; support light and dark; one accent colour per agent role used consistently everywhere.

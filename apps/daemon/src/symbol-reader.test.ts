@@ -2,7 +2,7 @@ import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { symbolKey } from '@clankergram/protocol';
+import { symbolKey } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { SymbolReader } from './symbol-reader.js';
 
@@ -12,13 +12,13 @@ const log = { info() {}, warn() {} };
 
 /** A throwaway copy of the demo repo so tests can edit files on disk. */
 function copyOfDemo(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'clankergram-symbols-'));
+  const dir = mkdtempSync(join(tmpdir(), 'agentigram-symbols-'));
   cpSync(join(DEMO, 'src'), join(dir, 'src'), { recursive: true });
   cpSync(join(DEMO, 'tsconfig.json'), join(dir, 'tsconfig.json'));
   return dir;
 }
 
-describe('SymbolReader (daemon <-> @clankergram/analysis)', () => {
+describe('SymbolReader (daemon <-> @agentigram/analysis)', () => {
   it('maps a Read of checkout.ts to the symbols it defines and references, including User.id', () => {
     const reader = new SymbolReader(DEMO, log);
     const keys = reader.read(['src/checkout/checkout.ts']);
@@ -49,7 +49,7 @@ describe('SymbolReader (daemon <-> @clankergram/analysis)', () => {
   });
 
   it('degrades to no symbols, without throwing, when the repo has no tsconfig', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'clankergram-notts-'));
+    const dir = mkdtempSync(join(tmpdir(), 'agentigram-notts-'));
     mkdirSync(join(dir, 'src'));
     const warnings: object[] = [];
     const reader = new SymbolReader(dir, {

@@ -1,5 +1,5 @@
 import { relative, resolve, sep } from 'node:path';
-import type { NewEvent, SymbolKey } from '@clankergram/protocol';
+import type { NewEvent, SymbolKey } from '@agentigram/protocol';
 import { z } from 'zod';
 import { redactSecrets } from './redact.js';
 import type { AdapterContext, AgentAdapter } from './registry.js';
@@ -45,7 +45,7 @@ function repoPath(cwd: string, input: unknown): string | undefined {
   return (path.startsWith('..') ? absolute : path || '.').split(sep).join('/');
 }
 
-function inputPaths(input: ClaudeHookInput): string[] {
+export function claudeToolPaths(input: ClaudeHookInput): string[] {
   const toolInput = input.tool_input ?? {};
   const candidates: unknown[] = [toolInput.file_path, toolInput.path];
   if (Array.isArray(toolInput.edits)) {
@@ -116,7 +116,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
       }
       case 'PostToolUse': {
         const tool = input.tool_name ?? 'unknown';
-        const paths = inputPaths(input);
+        const paths = claudeToolPaths(input);
         if (READ_TOOLS.has(tool)) {
           const symbols = await this.readSymbols(paths, input.cwd);
           return paths.map((path) => ({

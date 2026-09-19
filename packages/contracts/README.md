@@ -1,4 +1,4 @@
-# @clankergram/contracts
+# @agentigram/contracts
 
 **Owner:** Part 3
 

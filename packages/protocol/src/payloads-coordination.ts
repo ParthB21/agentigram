@@ -19,9 +19,11 @@ export const LeaseRequested = payload('LEASE_REQUESTED', {
 });
 export const LeaseGranted = payload('LEASE_GRANTED', {
   leaseId: z.string(),
+  sessionId: z.string().optional(),
   symbols: z.array(SymbolKeySchema),
   fencingToken: z.number().int().nonnegative(),
   expiresAt: z.string(),
+  ttlMs: z.number().int().positive().optional(),
 });
 export const LeaseDenied = payload('LEASE_DENIED', {
   symbols: z.array(SymbolKeySchema),

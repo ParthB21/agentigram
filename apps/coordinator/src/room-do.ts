@@ -4,7 +4,7 @@ import {
   ClientMessageSchema,
   type Event,
   type ServerMessage,
-} from '@clankergram/protocol';
+} from '@agentigram/protocol';
 import { checkToken, safeEqual } from './authz.js';
 import { MAX_EVENT_BYTES, RoomCore, type SubmitOutcome } from './room-core.js';
 import { type Client, recipients } from './routing.js';
@@ -67,7 +67,10 @@ export class RoomDO extends DurableObject<Env> {
     const out = this.coreFor(roomId).submit(input, { kind: 'worker' });
     if (!out.ok)
       return json({ error: out.message, code: out.code }, out.code === 'UNAUTHORIZED' ? 403 : 400);
-    if (!out.duplicate) this.broadcast(out.event);
+    if (!out.duplicate) {
+      for (const event of out.events) this.broadcast(event);
+      await this.scheduleNextAlarm(roomId);
+    }
     return json({ id: out.event.id, seq: out.event.seq, duplicate: out.duplicate }, 200);
   }
 
@@ -116,7 +119,10 @@ export class RoomDO extends DurableObject<Env> {
     if (msg.type === 'HEARTBEAT') {
       const sessionId = att.sessionId ?? msg.sessionId;
       const beat = sessionId ? core.heartbeat(sessionId) : undefined;
-      if (beat?.ok && !beat.duplicate) this.broadcast(beat.event);
+      if (beat?.ok && !beat.duplicate) {
+        for (const event of beat.events) this.broadcast(event);
+        await this.scheduleNextAlarm(att.roomId);
+      }
       return;
     }
 
@@ -135,10 +141,23 @@ export class RoomDO extends DurableObject<Env> {
         out.id,
       );
     send({ type: 'ACK', id: out.event.id, seq: out.event.seq });
-    if (!out.duplicate) this.broadcast(out.event);
+    if (!out.duplicate) {
+      for (const event of out.events) this.broadcast(event);
+      await this.scheduleNextAlarm(att.roomId);
+    }
   }
 
   override async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+    const attachment = ws.deserializeAttachment() as Attachment | null;
+    if (attachment?.sessionId) {
+      for (const event of this.coreFor(attachment.roomId).expireSessionLeases(
+        attachment.sessionId,
+        'disconnect',
+      )) {
+        this.broadcast(event);
+      }
+      await this.scheduleNextAlarm(attachment.roomId);
+    }
     try {
       ws.close(code, reason);
     } catch {
@@ -154,6 +173,13 @@ export class RoomDO extends DurableObject<Env> {
     }
   }
 
+  override async alarm(): Promise<void> {
+    const attachment = this.ctx.getWebSockets()[0]?.deserializeAttachment() as Attachment | null;
+    if (!attachment) return;
+    for (const event of this.coreFor(attachment.roomId).expireLeases()) this.broadcast(event);
+    await this.scheduleNextAlarm(attachment.roomId);
+  }
+
   /** Fan out to every greeted socket the router allows; unauthenticated sockets get nothing. */
   private broadcast(event: Event): void {
     const sockets = this.ctx.getWebSockets();
@@ -167,7 +193,7 @@ export class RoomDO extends DurableObject<Env> {
       byId.set(id, ws);
     });
     const frame = JSON.stringify({ type: 'EVENTS', events: [event] } satisfies ServerMessage);
-    for (const c of recipients(event, clients)) {
+    for (const c of recipients(event, clients, this.core?.currentState)) {
       try {
         byId.get(c.id)?.send(frame);
       } catch (err) {
@@ -182,6 +208,17 @@ export class RoomDO extends DurableObject<Env> {
         );
       }
     }
+  }
+
+  private async scheduleNextAlarm(roomId: string): Promise<void> {
+    const expiries = Object.values(this.coreFor(roomId).currentState.leases).map((lease) =>
+      Date.parse(lease.expiresAt),
+    );
+    if (expiries.length === 0) {
+      await this.ctx.storage.deleteAlarm();
+      return;
+    }
+    await this.ctx.storage.setAlarm(Math.min(...expiries));
   }
 }
 

@@ -23,8 +23,8 @@ Each module has colocated Vitest tests (15 tests). Nothing here is production co
 | `indexRepo` (analysis), cold / update + re-index | < 2 s warm | ~0.3 s / ~0.05 s |
 
 ```bash
-pnpm --filter @clankergram/demo-repo typecheck   # incremental; cache in .cache/ (gitignored)
-pnpm --filter @clankergram/demo-repo test
+pnpm --filter @agentigram/demo-repo typecheck   # incremental; cache in .cache/ (gitignored)
+pnpm --filter @agentigram/demo-repo test
 ```
 
 ## Scripted demo tasks and the collision each produces

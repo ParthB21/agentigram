@@ -1,4 +1,4 @@
-# @clankergram/mcp
+# @agentigram/mcp
 
 **Owner:** Part 2
 

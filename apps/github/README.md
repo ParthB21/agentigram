@@ -1,4 +1,4 @@
-# @clankergram/github
+# @agentigram/github
 
 **Owner:** Part 3
 

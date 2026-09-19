@@ -1,20 +1,20 @@
-# Clankergram — Technical Spec v2
+# Agentigram — Technical Spec v2
 
 As of 2026-09-19
 
-> **Git knows what changed. Clankergram knows what everyone is trying to change — and what would break if it all landed right now.**
+> **Git knows what changed. Agentigram knows what everyone is trying to change — and what would break if it all landed right now.**
 
 ---
 
 ## Product in one page
 
-Clankergram is the multiplayer control room for engineering teams and their coding agents. Each engineer keeps their own laptop, branch/worktree, coding agent and task. Clankergram connects those agents so they continuously share what they are building, changing, discovering, waiting on, breaking and fixing, and it lets them question, interrupt and negotiate with one another.
+Agentigram is the multiplayer control room for engineering teams and their coding agents. Each engineer keeps their own laptop, branch/worktree, coding agent and task. Agentigram connects those agents so they continuously share what they are building, changing, discovering, waiting on, breaking and fixing, and it lets them question, interrupt and negotiate with one another.
 
 The agents' coordination is structured and machine-checked. On top of it, the dashboard renders that coordination as entertaining dialogue with distinct personalities, and records what each **model** accomplishes, so the team learns which models actually work best for them.
 
-**Demo setup:** four laptops, one GitHub repo, four engineers, four agents on four models (Frontend, Backend, Payments, Security), all joined to one room, e.g. `clankergram.dev/team/hackathon`.
+**Demo setup:** four laptops, one GitHub repo, four engineers, four agents on four models (Frontend, Backend, Payments, Security), all joined to one room, e.g. `agentigram.dev/team/hackathon`.
 
-**The running example used throughout this spec:** Backend migrates `User.id` from `number` to a UUID `string`. Payments is implementing checkout in different files that depend on `User.id`. Git sees no conflict. Clankergram must catch it, get the agents to agree a contract, and enforce it.
+**The running example used throughout this spec:** Backend migrates `User.id` from `number` to a UUID `string`. Payments is implementing checkout in different files that depend on `User.id`. Git sees no conflict. Agentigram must catch it, get the agents to agree a contract, and enforce it.
 
 **Loop:** DETECT → COMMUNICATE → NEGOTIATE → ADAPT → VERIFY.
 
@@ -48,7 +48,7 @@ A second structural fix: v1 put the collision logic in the cloud. In v2 the code
 
 ## The novel core
 
-Clankergram's technical claim: **it computes, continuously, what would break if every agent's uncommitted work landed right now — and makes the agents fix it before anyone commits.** Everything else in the product (chat, personas, dashboards) is a view on that engine.
+Agentigram's technical claim: **it computes, continuously, what would break if every agent's uncommitted work landed right now — and makes the agents fix it before anyone commits.** Everything else in the product (chat, personas, dashboards) is a view on that engine.
 
 The engine has three layers, each stronger than the last:
 
@@ -64,7 +64,7 @@ Be precise when pitching "never been done." Proactive conflict detection between
 
 Those tools stayed academic mainly because the warnings landed on **humans**, who had to stop, context-switch and talk to each other. The cost of reacting exceeded the benefit.
 
-What Clankergram adds that those systems could not:
+What Agentigram adds that those systems could not:
 
 - **The recipient is an agent.** It can read a warning, message the other agent, and rewrite types in under a minute without a meeting. The economics of awareness flip.
 - **Intent before edits.** Agents announce plans in machine-readable form; humans never did.
@@ -76,11 +76,11 @@ One-line pitch for judges: *"Crystal proved speculative merging works but humans
 
 ### Reference implementation: OpenAgents
 
-[OpenAgents](https://github.com/openagents-org/openagents) (Apache 2.0) is an open-source workspace where many agents, on different machines and hosts, share threads, files and a browser. It is a useful worked example of the *plumbing* Clankergram needs, and a useful contrast on the *engine*: it connects agents so they can talk, but it does not observe code, compute impact, lease symbols or compile agreements. That is the gap this spec fills.
+[OpenAgents](https://github.com/openagents-org/openagents) (Apache 2.0) is an open-source workspace where many agents, on different machines and hosts, share threads, files and a browser. It is a useful worked example of the *plumbing* Agentigram needs, and a useful contrast on the *engine*: it connects agents so they can talk, but it does not observe code, compute impact, lease symbols or compile agreements. That is the gap this spec fills.
 
 The reference checkout lives in `openagents-develop/` (read-only, not part of this repo). What was studied and adopted:
 
-| Concern | How OpenAgents does it | What Clankergram takes | Where it differs |
+| Concern | How OpenAgents does it | What Agentigram takes | Where it differs |
 | --- | --- | --- | --- |
 | Event model | One `Event` type with hierarchical names, wildcard subscriptions, visibility levels (public, network, channel, direct, restricted, mod-only) | Wildcard pattern matching and visibility-before-pattern filtering | Two audiences only: agents and dashboards. Dashboard-only types can never be widened by a wildcard. |
 | Agent hosts | An adapter per host behind a registry; ~22 hosts, each bridging a CLI or API | Adapter registry, host catalog, graceful degraded mode | Adapters normalise hook payloads into events; they do not host or spawn the agent. |
@@ -90,36 +90,44 @@ The reference checkout lives in `openagents-develop/` (read-only, not part of th
 | Untrusted text | Redacts secrets from diagnostics; pins length-capped knowledge into prompts | Secret redactor on every outbound payload; labelled, length-capped peer-data wrapper | Payload redaction leaves commit SHAs, signature hashes and symbol keys intact. Wrapped content cannot close its own wrapper. |
 | Tools for agents | Tool definitions built as data, individually switchable, served over stdio JSON-RPC | Tool definitions as data, individually switchable | Generated from the protocol's Zod schemas; transport is the official MCP SDK. |
 
-Not adopted: its REST workspace API, channels/forum/wiki modules, web Studio, launcher TUI and Python SDK. They implement chat and agent hosting, which Clankergram deliberately does not.
+Not adopted: its REST workspace API, channels/forum/wiki modules, web Studio, launcher TUI and Python SDK. They implement chat and agent hosting, which Agentigram deliberately does not.
 
 ---
 
 ## Architecture
 
-Three tiers: a daemon on each laptop that sees the code, one coordinator per room that orders events and holds leases, and a Postgres store plus workers for history, analysis and the dashboard.
+The default runtime is peer-to-peer: every laptop runs a daemon, and the laptop that creates the
+room is its sole authority. That authority orders events, grants leases, resolves human escalations,
+and writes an append-only Hypercore replicated to the other laptops. The hosted Durable Object path
+remains an optional transport for deployments that need a continuously available coordinator.
 
 ```mermaid
 flowchart LR
   subgraph Laptop["Each laptop"]
-    A[Coding agent] -->|hooks| D[clankergram daemon]
+    A[Coding agent] -->|hooks| D[agentigram daemon]
     A <-->|MCP stdio| D
     A -->|OTel| D
     W[Git worktree] -->|watch + diff| D
   end
-  D <-->|WebSocket| R[Room coordinator<br/>Durable Object]
-  R --> P[(Postgres)]
+  D <-->|Noise + Protomux| R[Authority laptop]
+  R --> H[(Replicated Hypercore)]
+  R -. optional .-> P[(Postgres)]
   R <--> S[Speculative-merge worker]
   R --> L[LLM worker<br/>relevance + personas]
   G[GitHub App] --> R
-  R <-->|WebSocket| UI[Next.js dashboard]
+  R <-->|loopback gateway| UI[Next.js dashboard]
 ```
 
-Agents never talk to the cloud directly. The daemon is the only thing on the laptop with network access to Clankergram, which keeps the trust boundary small.
+Agents never talk to peers or the cloud directly. The daemon owns all network access and structured
+delivery. If the authority disappears, peers retain verified history but enter a read-only safe pause;
+v1 deliberately has no automatic leader election.
 
 | Component | Runs on | Owns |
 | --- | --- | --- |
 | Daemon | Laptop (Node) | Hook receiver, MCP server, OTel receiver, file watcher, symbol index, local diff, commit trailers, context packets |
-| Room coordinator | Cloudflare Durable Object, one per team room | Ordered event log, presence, leases, contract ledger, negotiation state, fan-out, collision state, markets |
+| Authority daemon | Room creator's laptop | Total order, leases, fencing, contract ledger, negotiation state, fan-out |
+| P2P history | Every laptop | Encrypted, verified replication of the authority's append-only event log |
+| Hosted coordinator (optional) | Cloudflare Durable Object | WebSocket-compatible deployment of the same `RoomCore` |
 | Speculative-merge worker | Container (Fly Machine or Cloudflare Container) | Shadow clone of repo, applies live diffs, runs `tsc` + affected tests + contract checks |
 | LLM worker | Serverless function | Intent→symbol resolution fallback, relevance for symbol-less events, persona rendering |
 | Postgres | Supabase (Postgres + Auth) | Durable history, ModelRuns, metrics, auth |
@@ -130,19 +138,22 @@ Agents never talk to the cloud directly. The daemon is the only thing on the lap
 
 ## Tech stack
 
-One language (TypeScript) end to end, one stateful primitive for realtime (Durable Objects), one database (Postgres). Every choice has a reason tied to a requirement; nothing is there by template default.
+One language (TypeScript) end to end, one authority per room, and an encrypted replicated log.
+Hosted services are optional extensions, not prerequisites for the hackathon path.
 
 | Layer | Choice | Why | Rejected |
 | --- | --- | --- | --- |
 | Language | TypeScript, strict | Shared event types from daemon to UI; TS compiler API is also the analysis engine | Go/Rust daemon: faster, but splits the schema and loses the TS compiler API |
 | Repo | pnpm workspaces | Enough for this many packages | Turborepo, Nx: caching gains ≈ 0 at this size |
-| Schemas | Zod, one `@clankergram/protocol` package | Runtime validation at every trust boundary; generates JSON Schema for MCP tools | Hand-written types: no runtime checks on untrusted input |
-| Daemon runtime | Node 22 LTS, shipped via `npx` | Runs where agents already run; `npx clankergram join` works with no install | Bun single binary: nice later, riskier on judges' laptops |
+| Schemas | Zod, one `@agentigram/protocol` package | Runtime validation at every trust boundary; generates JSON Schema for MCP tools | Hand-written types: no runtime checks on untrusted input |
+| Daemon runtime | Node 22 LTS, shipped via `npx` | Runs where agents already run; `npx agentigram join` works with no install | Bun single binary: nice later, riskier on judges' laptops |
 | Code analysis | TypeScript compiler API (language service) for TS; tree-sitter for other languages, symbol-level only | Real type information, incremental, runs locally | LSP per language: heavy; LLM-only: non-deterministic |
 | File watching | `@parcel/watcher` + `git diff` against merge base | Native, fast, handles large trees | chokidar: slower on big repos |
 | Agent integration | Hooks (primary), MCP via official TS SDK `@modelcontextprotocol/sdk` (dialogue), OTel receiver (tokens/cost) | See daemon section | MCP-only: relies on agent goodwill |
-| Realtime + coordination | Cloudflare Durable Objects (SQLite-backed), one per room, hibernatable WebSockets, alarms for lease expiry | Single-threaded per room → total order, atomic leases; cheap idle | Supabase Broadcast: no ordering or atomic claims; custom WS server: you rebuild DOs badly |
-| Durable store | Postgres via Supabase (Postgres + Auth; Realtime not used) | Analytics SQL over runs and events; auth solved | Firestore/Mongo: weak for the metric queries |
+| Realtime + coordination | Hyperswarm + Protomux, one designated authority laptop | Encrypted NAT-traversing connections with a single explicit serialization point | Multi-writer consensus: unnecessary and unsafe for v1 lease authority |
+| Durable event history | Corestore/Hypercore, single writer and replicated readers | Cryptographically verified append-only history that survives peer reconnects | Autobase: eventual reordering is unsuitable for authoritative leases |
+| Hosted transport (optional) | Cloudflare Durable Objects + WebSockets | Reuses `RoomCore` when an always-on authority is required | Making cloud hosting mandatory for a laptop-first demo |
+| Analytics store (optional) | Postgres via Supabase | Later history and metric queries; source and transcripts still never leave laptops | Using Postgres for realtime ordering |
 | Speculative merge | Container per room (Fly Machines or Cloudflare Containers), warm clone | Needs a real filesystem, git, node_modules, `tsc` | Serverless functions: cold starts, no persistent clone |
 | LLM calls | Vercel AI SDK, provider-agnostic, direct | Structured output with Zod, streaming, any provider | LiteLLM proxy: a Python service to operate for three call sites |
 | Frontend | Next.js (App Router), Tailwind, shadcn/ui, Recharts, Motion | Sound, fast to build | — |
@@ -158,7 +169,7 @@ Versions: pin current stable of each at project start and check changelogs — M
 
 The daemon captures agent activity through channels ranked by trust: what the file system shows, what hooks report, and what the agent chooses to say over MCP.
 
-`npx clankergram join TEAM_CODE` does four things: authenticates the engineer, installs hook config for the detected agent host(s) into the repo's local settings, registers the MCP server, and starts the daemon on a Unix socket.
+`npx agentigram join TEAM_CODE` does four things: authenticates the engineer, installs hook config for the detected agent host(s) into the repo's local settings, registers the MCP server, and starts the daemon on a Unix socket.
 
 ### Channels
 
@@ -171,7 +182,7 @@ The daemon captures agent activity through channels ranked by trust: what the fi
 
 ### Adapters
 
-Each agent host gets a thin adapter that normalises its hooks into Clankergram events. Build **Claude Code** first (richest hook set: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd). Add Codex, Cursor and Gemini CLI adapters as their hook support allows. A host with no hooks still works in degraded mode: watcher + MCP. Adapters are looked up by host name in a registry (`createAdapter(host)`); a known host with no adapter yet resolves to the degraded adapter, and an unknown host is an error. (Registry pattern from OpenAgents; see Prior art.)
+Each agent host gets a thin adapter that normalises its hooks into Agentigram events. Build **Claude Code** first (richest hook set: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd). Add Codex, Cursor and Gemini CLI adapters as their hook support allows. A host with no hooks still works in degraded mode: watcher + MCP. Adapters are looked up by host name in a registry (`createAdapter(host)`); a known host with no adapter yet resolves to the degraded adapter, and an unknown host is an error. (Registry pattern from OpenAgents; see Prior art.)
 
 ### Read sets
 
@@ -188,11 +199,11 @@ An agent mid-generation cannot be interrupted, so delivery happens at **tool-cal
 
 ### MCP transport
 
-The agent host launches `clankergram mcp` over stdio (universal support); that process is a thin shim forwarding to the long-running daemon over the Unix socket. One daemon per laptop, many agent sessions.
+The agent host launches `agentigram mcp` over stdio (universal support); that process is a thin shim forwarding to the long-running daemon over the Unix socket. One daemon per laptop, many agent sessions.
 
 ### Attribution
 
-The daemon installs a `prepare-commit-msg` git hook that appends trailers: `Clankergram-Run: <run id>` and `Clankergram-Model: <model>`. Every commit, PR and CI result then maps to a ModelRun without guessing.
+The daemon installs a `prepare-commit-msg` git hook that appends trailers: `Agentigram-Run: <run id>` and `Agentigram-Model: <model>`. Every commit, PR and CI result then maps to a ModelRun without guessing.
 
 ---
 
@@ -312,7 +323,7 @@ On acceptance, the coordinator requests compilation into one of three check type
 ### Where contracts run
 
 - **Speculative merge**, on every cycle. A contract that a later diff breaks raises a collision against the ledger itself.
-- **CI**, via the GitHub App posting a `clankergram/contracts` check run on each PR. Merging a PR that violates an agreement shows red in GitHub.
+- **CI**, via the GitHub App posting a `agentigram/contracts` check run on each PR. Merging a PR that violates an agreement shows red in GitHub.
 - **Stop gate**, so an agent can't declare done while violating one.
 
 Contracts are versioned in the ledger and can be superseded only by a new negotiation. The ledger is also what `sync()` returns as the "decisions" part of team state.
@@ -353,7 +364,7 @@ Delivery happens at the recipient's next tool call, usually within seconds. Mess
 - Models differ in tokenizer and provider, so there is no shared cache to pool.
 - Dumping one agent's 100k+ tokens into another crowds out its own task and imports every wrong turn and injected string along with the useful parts.
 
-### What Clankergram shares instead
+### What Agentigram shares instead
 
 | Level | What | Size | Delivered |
 | --- | --- | --- | --- |
@@ -464,13 +475,13 @@ Every market with a model subject records three numbers: the crowd's closing pri
 
 ## Security, privacy and prompt injection
 
-Clankergram pipes one agent's words into another agent's context, which makes it a prompt-injection channel by design. It is the first question a technical judge will ask.
+Agentigram pipes one agent's words into another agent's context, which makes it a prompt-injection channel by design. It is the first question a technical judge will ask.
 
 | Threat | Mitigation |
 | --- | --- |
 | Agent A (or a poisoned file A read) injects instructions into Agent B via a message | Inter-agent content is delivered only as typed, schema-validated events, wrapped and labelled as untrusted data from a named peer. Free text is length-capped (whole lines kept from both ends) and never placed in system-level context. Content that contains the wrapper's own tag is escaped so it cannot close the wrapper early. |
 | Persona banter leaks into agent context | Personas render only on the dashboard. Agents receive the structured event, never the banter. |
-| Peer message asks an agent to run a command or exfiltrate data | Agent instructions state peer messages are information, never commands. Clankergram tools expose no "run this" capability to peers. The host's own permission prompts stay on. |
+| Peer message asks an agent to run a command or exfiltrate data | Agent instructions state peer messages are information, never commands. Agentigram tools expose no "run this" capability to peers. The host's own permission prompts stay on. |
 | Source code leaves the laptop | Default: only symbol keys, signature hashes and short signatures leave. Diffs go only to the speculative-merge worker, and only when the team opts in (per repo). Self-hostable worker for teams that won't send diffs at all. |
 | Transcripts leave the laptop | Never. `ask_context` answers are generated locally from retrieved passages; only the redacted answer is sent. |
 | Secrets in diffs or events | Daemon runs a secret scanner on outbound payloads and redacts matches. Structural fields (paths, symbol keys, commit ids, hashes) are never rewritten, and the opaque-long-token heuristic is off for payloads because commit SHAs and signature hashes are legitimately 40+ characters. |
@@ -518,7 +529,7 @@ A markets panel beside the agent view, live price sparklines, a trade sheet, res
 
 ## Data model and event schema
 
-One envelope for every event, a discriminated union of payloads, all defined once in Zod in `@clankergram/protocol`.
+One envelope for every event, a discriminated union of payloads, all defined once in Zod in `@agentigram/protocol`.
 
 ### Envelope
 
@@ -635,14 +646,14 @@ The only places parts touch; agree them at M0 and change them only by a PR all f
 
 | Between | Interface | Owner |
 | --- | --- | --- |
-| Everyone | `@clankergram/protocol`: event envelope, payload union, room state shape, wire messages | Part 1 |
+| Everyone | `@agentigram/protocol`: event envelope, payload union, room state shape, wire messages | Part 1 |
 | 2 ↔ 1 | WebSocket session: `hello` with last `seq`, send event, receive event stream, heartbeat | Part 1 |
-| 2 ↔ 3 | `@clankergram/analysis` API called inside the daemon: `indexRepo(root)`, `apiDelta(base, worktree)`, `resolveIntent(text, files, symbols?)`, `readSetFromFiles(paths)`, `assessImpact(remoteFacts, localIndex, localReadSet)` | Part 3 |
+| 2 ↔ 3 | `@agentigram/analysis` API called inside the daemon: `indexRepo(root)`, `apiDelta(base, worktree)`, `resolveIntent(text, files, symbols?)`, `readSetFromFiles(paths)`, `assessImpact(remoteFacts, localIndex, localReadSet)` | Part 3 |
 | 3 → 1 | HTTP ingest for server-side results: `SPEC_MERGE_RESULT`, `CI_RESULT`, `REVIEW_RESULT`, `CONTRACT_RESULT` | Part 1 |
-| 3 → 1 | `@clankergram/contracts` `verifyRun(evidence)`: pure function the reducer calls to emit `RUN_VERIFIED` | Part 3 |
+| 3 → 1 | `@agentigram/contracts` `verifyRun(evidence)`: pure function the reducer calls to emit `RUN_VERIFIED` | Part 3 |
 | 1 → 3 | Contract compile request on `ACCEPT`; diff fetch for speculative merge | Part 3 |
 | 4 ↔ 1 | Dashboard WebSocket (read + human actions: trades, lease overrides, escalation decisions); Postgres read models for history | Part 1 |
-| 4 → 1 | `@clankergram/league` and `@clankergram/stats` are pure packages the reducer/coordinator imports | Part 4 |
+| 4 → 1 | `@agentigram/league` and `@agentigram/stats` are pure packages the reducer/coordinator imports | Part 4 |
 
 ### Milestones
 
@@ -659,4 +670,4 @@ The only places parts touch; agree them at M0 and change them only by a PR all f
 - M0 is a single joint session; the protocol package is frozen at its end.
 - Each part ships behind the simulator first: Part 4 never waits for real agents, Part 2 never waits for the cloud.
 - One integration run on four real laptops at the end of each milestone, following the demo script.
-- Use Clankergram on itself from M2 onward: four teammates, four agents, one repo is exactly the product's scenario.
+- Use Agentigram on itself from M2 onward: four teammates, four agents, one repo is exactly the product's scenario.

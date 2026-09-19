@@ -1,4 +1,4 @@
-import type { Contract, Event } from '@clankergram/protocol';
+import type { Contract, Event } from '@agentigram/protocol';
 
 /** Side effects the coordinator performs after a reduction. The reducer itself does no I/O. */
 export type Broadcast = {

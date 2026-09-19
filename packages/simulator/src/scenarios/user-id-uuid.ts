@@ -1,4 +1,4 @@
-import { isAgentVisible, type Payload, symbolKey } from '@clankergram/protocol';
+import { isAgentVisible, type Payload, symbolKey } from '@agentigram/protocol';
 import type { Scenario, ScenarioSession, ScenarioStep } from '../scenario.js';
 
 /**

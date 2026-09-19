@@ -1,4 +1,4 @@
-import { MCP_TOOL_NAMES, symbolKey, ValidationError } from '@clankergram/protocol';
+import { MCP_TOOL_NAMES, symbolKey, ValidationError } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { buildToolDefs, parseToolCall, TOOL_DESCRIPTIONS } from './index.js';
 

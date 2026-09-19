@@ -14,11 +14,11 @@ const config: NextConfig = {
     : {}),
   // Workspace packages ship TypeScript source (see docs/decisions.md), so Next must compile them.
   transpilePackages: [
-    '@clankergram/protocol',
-    '@clankergram/reducer',
-    '@clankergram/personas',
-    '@clankergram/league',
-    '@clankergram/stats',
+    '@agentigram/protocol',
+    '@agentigram/reducer',
+    '@agentigram/personas',
+    '@agentigram/league',
+    '@agentigram/stats',
   ],
   // Our packages use NodeNext-style `./x.js` imports that point at `./x.ts`. Turbopack does not
   // map that yet, so the app builds with webpack (`next dev/build --webpack`) plus this alias.

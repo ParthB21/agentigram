@@ -1,4 +1,4 @@
-import type { Event } from '@clankergram/protocol';
+import type { Event } from '@agentigram/protocol';
 
 const MAX_LINE_LENGTH = 220;
 const NOTABLE_TYPES = new Set([

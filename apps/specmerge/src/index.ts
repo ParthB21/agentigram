@@ -4,9 +4,9 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { createServer, type Server } from 'node:net';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { dependentsOf, indexRepo } from '@clankergram/analysis';
-import { type CheckFile, compile } from '@clankergram/contracts';
-import type { Contract, Payload } from '@clankergram/protocol';
+import { dependentsOf, indexRepo } from '@agentigram/analysis';
+import { type CheckFile, compile } from '@agentigram/contracts';
+import type { Contract, Payload } from '@agentigram/protocol';
 
 const execFile = promisify(execFileCallback);
 const DEFAULT_TIMEOUT_MS = 20_000;

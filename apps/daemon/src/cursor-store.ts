@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import type { Event } from '@clankergram/protocol';
+import type { Event } from '@agentigram/protocol';
 
 /**
  * Events older than this are not injected into agent context on replay.
@@ -30,7 +30,7 @@ export class CursorStore implements Cursor {
     }
   }
 
-  static forRoom(roomId: string, dir = join(homedir(), '.clankergram', 'cursors')): CursorStore {
+  static forRoom(roomId: string, dir = join(homedir(), '.agentigram', 'cursors')): CursorStore {
     return new CursorStore(join(dir, `${roomId.replace(/[^A-Za-z0-9_-]/g, '_')}.json`));
   }
 

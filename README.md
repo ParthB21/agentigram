@@ -1,8 +1,8 @@
-# Clankergram
+# Agentigram
 
-> Git knows what changed. Clankergram knows what everyone is trying to change — and what would break if it all landed right now.
+> Git knows what changed. Agentigram knows what everyone is trying to change — and what would break if it all landed right now.
 
-Clankergram is a coordination layer for coding agents running on different engineers' laptops. It
+Agentigram is a coordination layer for coding agents running on different engineers' laptops. It
 observes what each agent reads and writes, computes which uncommitted changes would break each other
 (up to a speculative merge + typecheck), makes the agents negotiate a contract, compiles that contract
 into a check, and enforces it. A dashboard shows it all as live dialogue, tracks model performance and
@@ -15,24 +15,31 @@ runs a play-money prediction league.
 
 ## Status
 
-**M0 (bootstrap) is done; M1 has not started.** The scaffold, the protocol package (v0), a reducer
-that handles session lifecycle, the simulator with the canonical scenario, and the OpenAgents-derived
-daemon/adapter utilities all exist and are tested. Leases, collisions, negotiation, analysis,
-contracts, the coordinator, the league, stats, personas and the real dashboard are stubs or
-skipped-test checklists for Parts 1–4.
+The Half 1 vertical slice is implemented: clean Agentigram naming, encrypted P2P rooms, a
+single-writer replicated event history, authoritative leases and fencing, negotiation state,
+deterministic routing, Claude Code and Codex hooks, MCP tools, and a live macOS control window.
+The Durable Object/WebSocket coordinator remains available as an optional hosted transport.
 
 ## Quick start
 
-Needs Node 22 (`.nvmrc`) and pnpm 10. No Turborepo or Nx.
+Needs Node 22 (`.nvmrc`). If `pnpm` is not installed, use the pinned version through `npx`:
 
 ```bash
-pnpm install
-pnpm -r typecheck && pnpm lint && pnpm -r test
+npx pnpm@10.34.5 install
+npx pnpm@10.34.5 typecheck
+npx pnpm@10.34.5 test
 
-pnpm sim                                # mock coordinator on ws://localhost:8787, plays "user-id-uuid" into room "hackathon"
-pnpm sim --scenario user-id-uuid --speed 4
-pnpm clankergram dev-connect --session payments     # daemon side: connect and log events
-pnpm --filter @clankergram/web dev      # dashboard: http://localhost:3000/team/hackathon
+# One-laptop P2P smoke test
+npx pnpm@10.34.5 agentigram demo --scenario user-id-uuid --peers 4
+
+# Authority laptop (prints an agentigram:// invite)
+npx pnpm@10.34.5 agentigram create --root . --session backend --host claude
+
+# Second laptop, in a clone of the same Git repository
+npx pnpm@10.34.5 agentigram join '<invite>' --root . --session payments --host codex
+
+# Local transparent macOS window
+npx pnpm@10.34.5 agentigram ui --root .
 ```
 
 `pnpm sim` flags: `--scenario`, `--port` (8787), `--room` (`hackathon`), `--speed`, `--no-play`, `--list`.
@@ -44,21 +51,22 @@ pnpm --filter @clankergram/web dev      # dashboard: http://localhost:3000/team/
 | `packages/protocol` | 1 | Zod schemas: event envelope, 42 payload types, wire messages, `RoomState`, symbol keys, visibility rules, MCP tool schemas. Shared contract. |
 | `packages/reducer` | 1 | Pure `reduce(state, event) → { state, effects }`. Sessions, heartbeat and intent are implemented; the rest is a skipped-test checklist. |
 | `packages/simulator` | 1 | Scenarios + mock coordinator (`/room/:roomId`). The `user-id-uuid` demo lives here. |
+| `packages/p2p` | 1 | Hyperswarm discovery, Protomux control channel, Corestore/Hypercore event replication, room invites. |
 | `packages/adapters` | 2 | Agent-host adapter registry, health tracking, secret redaction, peer-data wrapper. |
 | `packages/mcp` | 2 | MCP tool definitions and input validation, generated from protocol schemas. |
-| `apps/daemon` | 2 | `clankergram` CLI, reconnecting room client, cursor persistence, process supervisor. |
+| `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex hooks, MCP, watcher, secure Electron bridge. |
 | `packages/analysis`, `packages/contracts`, `apps/specmerge`, `apps/github`, `demo-repo` | 3 | Stubs with agreed signatures. |
 | `packages/league`, `packages/stats`, `packages/personas`, `apps/web` | 4 | Stubs, plus a dashboard shell that prints the raw event stream. |
-| `apps/coordinator` | 1 | Stub. The Durable Object lands here. |
+| `apps/coordinator` | 1 | Shared authority core plus the optional Cloudflare Durable Object/WebSocket transport. |
 
 ## Prior art: OpenAgents
 
 We studied [OpenAgents](https://github.com/openagents-org/openagents) (Apache 2.0), an open-source
 "workspace" where many agents share threads, files and a browser. It solves a different problem —
 agents talking to each other and to humans — and has no notion of code impact, leases or contracts.
-Its architecture is still the best worked example we found of the plumbing Clankergram also needs:
+Its architecture is still the best worked example we found of the plumbing Agentigram also needs:
 
-| OpenAgents | Idea | In Clankergram |
+| OpenAgents | Idea | In Agentigram |
 | --- | --- | --- |
 | Event model: hierarchical names, wildcard subscriptions, visibility levels | Everything is an event; delivery is filtered by pattern *and* visibility | `matchesEventPattern`, `subscriptionMatches`, `isAgentVisible` (`packages/protocol`) |
 | Adapter registry (`adapters/index.js`, `registry/*.json`) | One adapter per agent host, looked up by name | `createAdapter`, `HOST_CATALOG`, degraded mode (`packages/adapters`) |
@@ -74,9 +82,11 @@ are adapted and rewritten in TypeScript; attribution: OpenAgents © its contribu
 Deliberately left out: its workspace REST API, channels/forum/wiki mods, Studio UI, launcher TUI,
 per-host CLI subprocess bridges and Python SDK. Full mapping and deviations: `docs/decisions.md`.
 
-## Known gaps
+## Operational notes
 
-- Bootstrapped on Node 20 (no Node 22 on the machine); CI uses Node 22. See `docs/decisions.md`.
-- The Claude Code adapter, Durable Objects/Wrangler usage and the MCP SDK integration are **not** written:
-  their external APIs must be verified against current docs first (CLAUDE.md rule 10).
-- `openagents-develop/` is a read-only reference checkout and should not be committed.
+- The authority laptop is the only writer. If it disappears, peers keep their replicated history
+  but become read-only; v1 does not elect a replacement automatically.
+- Codex project hooks require review. Run `/hooks` in Codex after `create` or `join` and trust the
+  generated Agentigram hook definitions.
+- Source and transcripts stay local. Outbound structured payloads are validated and redacted.
+- `openagents-develop/` is a read-only reference checkout and is never committed.

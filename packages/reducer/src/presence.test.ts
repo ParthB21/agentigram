@@ -1,4 +1,4 @@
-import { emptyRoomState, type RoomState } from '@clankergram/protocol';
+import { emptyRoomState, type RoomState } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { presenceMap, STALE_AFTER_MS, sessionPresence } from './presence.js';
 

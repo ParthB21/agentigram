@@ -12,26 +12,31 @@ import {
 import { homedir, userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { RoomInvite } from '@agentigram/p2p';
 import { runtimePaths } from './runtime.js';
 
 const SETTINGS_PATH = join('.claude', 'settings.local.json');
+const CODEX_HOOKS_PATH = join('.codex', 'hooks.json');
+const CODEX_CONFIG_PATH = join('.codex', 'config.toml');
 const GIT_HOOK_PATH = join('.git', 'hooks', 'prepare-commit-msg');
-const ORIGINAL_HOOK_PATH = `${GIT_HOOK_PATH}.clankergram-original`;
-const MCP_SERVER_NAME = 'clankergram';
-const DEFAULT_COORDINATOR = 'ws://localhost:8787';
+const ORIGINAL_HOOK_PATH = `${GIT_HOOK_PATH}.agentigram-original`;
+const MCP_SERVER_NAME = 'agentigram';
 const OTLP_ENDPOINT = 'http://127.0.0.1:4318';
 
 type FileSnapshot = { exists: boolean; content?: string; mode?: number };
 
 export type InstallState = {
-  version: 1;
+  version: 2;
   root: string;
   roomId: string;
-  teamCode: string;
-  /** HELLO token for the coordinator. Defaults to the team code (what the simulator accepts). */
-  token?: string;
+  mode: 'authority' | 'peer';
+  host: 'claude-code' | 'codex';
+  sessionId: string;
+  repositoryFingerprint: string;
+  p2pStorage: string;
+  invite?: RoomInvite;
+  capability?: string;
   engineerId: string;
-  coordinator: string;
   socketPath: string;
   pid?: number;
   files: Record<string, FileSnapshot>;
@@ -41,9 +46,13 @@ export type InstallState = {
 
 export type InstallOptions = {
   root: string;
-  teamCode: string;
-  token?: string;
-  coordinator?: string;
+  roomId: string;
+  mode: InstallState['mode'];
+  host: InstallState['host'];
+  sessionId: string;
+  repositoryFingerprint: string;
+  invite?: RoomInvite;
+  capability?: string;
   engineerId?: string;
   runtimeBase?: string;
   claudeConfigPath?: string;
@@ -71,7 +80,7 @@ function readJson(path: string): Record<string, unknown> {
 function mergeSettings(root: string, socketPath: string): string {
   const path = join(root, SETTINGS_PATH);
   const settings = readJson(path);
-  const executable = fileURLToPath(new URL('../bin/clankergram.mjs', import.meta.url));
+  const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
   const handler = (event: string, timeout: number) => ({
     type: 'command',
     command: process.execPath,
@@ -98,7 +107,7 @@ function mergeSettings(root: string, socketPath: string): string {
       ...settings,
       env: {
         ...(settings.env as Record<string, unknown> | undefined),
-        CLANKERGRAM_SOCKET: socketPath,
+        AGENTIGRAM_SOCKET: socketPath,
         CLAUDE_CODE_ENABLE_TELEMETRY: '1',
         OTEL_METRICS_EXPORTER: 'otlp',
         OTEL_LOGS_EXPORTER: 'otlp',
@@ -117,7 +126,7 @@ function mergeMcpConfig(path: string, root: string): string {
   const projects = { ...(config.projects as Record<string, unknown> | undefined) };
   const project = { ...(projects[root] as Record<string, unknown> | undefined) };
   const servers = { ...(project.mcpServers as Record<string, unknown> | undefined) };
-  const executable = fileURLToPath(new URL('../bin/clankergram.mjs', import.meta.url));
+  const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
   servers[MCP_SERVER_NAME] = {
     type: 'stdio',
     command: process.execPath,
@@ -125,6 +134,56 @@ function mergeMcpConfig(path: string, root: string): string {
   };
   projects[root] = { ...project, mcpServers: servers };
   return `${JSON.stringify({ ...config, projects }, null, 2)}\n`;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+function mergeCodexHooks(root: string): string {
+  const path = join(root, CODEX_HOOKS_PATH);
+  const config = readJson(path);
+  const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
+  const command = (event: string) =>
+    [process.execPath, executable, 'hook', event, '--root', root].map(shellQuote).join(' ');
+  const hooks = { ...(config.hooks as Record<string, unknown> | undefined) };
+  for (const [event, matcher, timeout] of [
+    ['SessionStart', undefined, 3],
+    ['UserPromptSubmit', undefined, 3],
+    ['PreToolUse', 'Bash|apply_patch|Edit|Write', 3],
+    ['PostToolUse', 'Bash|apply_patch|Edit|Write', 3],
+    ['Stop', undefined, 3],
+    ['SessionEnd', undefined, 3],
+  ] as const) {
+    const current = Array.isArray(hooks[event]) ? hooks[event] : [];
+    hooks[event] = [
+      ...current,
+      {
+        ...(matcher ? { matcher } : {}),
+        hooks: [{ type: 'command', command: command(event), timeout }],
+      },
+    ];
+  }
+  return `${JSON.stringify(
+    { ...config, description: 'Agentigram coordination hooks', hooks },
+    null,
+    2,
+  )}\n`;
+}
+
+function mergeCodexMcp(path: string, root: string): string {
+  const existing = existsSync(path) ? readFileSync(path, 'utf8') : '';
+  if (/^\[mcp_servers\.agentigram\]$/m.test(existing)) {
+    throw new Error('Codex already has an mcp_servers.agentigram entry');
+  }
+  const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
+  const block = [
+    '[mcp_servers.agentigram]',
+    `command = ${JSON.stringify(process.execPath)}`,
+    `args = ${JSON.stringify([executable, 'mcp', '--root', root])}`,
+    '',
+  ].join('\n');
+  return `${existing.trimEnd()}${existing.trim() ? '\n\n' : ''}${block}`;
 }
 
 function installGitHook(root: string): void {
@@ -137,7 +196,7 @@ function installGitHook(root: string): void {
   }
   const script = [
     '#!/bin/sh',
-    '# Managed by Clankergram. Restored exactly by `clankergram leave`.',
+    '# Managed by Agentigram. Restored exactly by `agentigram leave`.',
     `[ -x "${original}" ] && "${original}" "$@"`,
     'exit 0',
     '',
@@ -149,23 +208,28 @@ export function install(options: InstallOptions): InstallState {
   const root = resolve(options.root);
   if (!existsSync(join(root, '.git'))) throw new Error(`${root} is not a Git repository`);
   const paths = runtimePaths(root, options.runtimeBase);
-  if (existsSync(paths.state)) throw new Error('Clankergram is already joined in this repository');
+  if (existsSync(paths.state)) throw new Error('Agentigram is already joined in this repository');
   const claudeConfigPath = options.claudeConfigPath ?? join(homedir(), '.claude.json');
   const trackedPaths = [
-    join(root, SETTINGS_PATH),
     join(root, GIT_HOOK_PATH),
     join(root, ORIGINAL_HOOK_PATH),
-    claudeConfigPath,
+    ...(options.host === 'claude-code'
+      ? [join(root, SETTINGS_PATH), claudeConfigPath]
+      : [join(root, CODEX_HOOKS_PATH), join(root, CODEX_CONFIG_PATH)]),
   ];
   const candidateDirectories = [...new Set(trackedPaths.map((path) => dirname(path)))];
   const state: InstallState = {
-    version: 1,
+    version: 2,
     root,
-    roomId: options.teamCode,
-    teamCode: options.teamCode,
-    ...(options.token ? { token: options.token } : {}),
+    roomId: options.roomId,
+    mode: options.mode,
+    host: options.host,
+    sessionId: options.sessionId,
+    repositoryFingerprint: options.repositoryFingerprint,
+    p2pStorage: paths.p2pStorage,
+    ...(options.invite ? { invite: options.invite } : {}),
+    ...(options.capability ? { capability: options.capability } : {}),
     engineerId: options.engineerId ?? userInfo().username,
-    coordinator: options.coordinator ?? DEFAULT_COORDINATOR,
     socketPath: paths.socket,
     claudeConfigPath,
     files: Object.fromEntries(trackedPaths.map((path) => [path, snapshot(path)])),
@@ -174,8 +238,16 @@ export function install(options: InstallOptions): InstallState {
 
   writeAtomic(paths.state, `${JSON.stringify(state, null, 2)}\n`, 0o600);
   try {
-    writeAtomic(join(root, SETTINGS_PATH), mergeSettings(root, paths.socket));
-    writeAtomic(claudeConfigPath, mergeMcpConfig(claudeConfigPath, root));
+    if (options.host === 'claude-code') {
+      writeAtomic(join(root, SETTINGS_PATH), mergeSettings(root, paths.socket));
+      writeAtomic(claudeConfigPath, mergeMcpConfig(claudeConfigPath, root));
+    } else {
+      writeAtomic(join(root, CODEX_HOOKS_PATH), mergeCodexHooks(root));
+      writeAtomic(
+        join(root, CODEX_CONFIG_PATH),
+        mergeCodexMcp(join(root, CODEX_CONFIG_PATH), root),
+      );
+    }
     installGitHook(root);
   } catch (error) {
     uninstall(root, options.runtimeBase);
@@ -194,7 +266,7 @@ function restore(path: string, file: FileSnapshot): void {
 
 export function uninstall(root: string, runtimeBase?: string): InstallState {
   const statePath = runtimePaths(root, runtimeBase).state;
-  if (!existsSync(statePath)) throw new Error('Clankergram is not joined in this repository');
+  if (!existsSync(statePath)) throw new Error('Agentigram is not joined in this repository');
   const state = JSON.parse(readFileSync(statePath, 'utf8')) as InstallState;
   for (const [path, file] of Object.entries(state.files)) restore(path, file);
   for (const directory of [...state.createdDirectories].reverse()) {

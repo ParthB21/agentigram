@@ -1,4 +1,4 @@
-import type { Event } from '@clankergram/protocol';
+import type { Event } from '@agentigram/protocol';
 
 /** One human-readable line per event, for dev-connect. Structured fields go to the logger. */
 export function summarise(e: Event): string {

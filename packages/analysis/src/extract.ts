@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { type SymbolKey, type SymbolKind, symbolKey } from '@clankergram/protocol';
+import { type SymbolKey, type SymbolKind, symbolKey } from '@agentigram/protocol';
 import ts from 'typescript';
 import type { IndexedSymbol } from './types.js';
 

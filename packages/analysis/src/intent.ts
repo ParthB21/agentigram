@@ -1,4 +1,4 @@
-import type { SymbolKey } from '@clankergram/protocol';
+import type { SymbolKey } from '@agentigram/protocol';
 import type { RepoIndex, ResolvedIntent } from './types.js';
 
 const keyPath = (key: string) => key.slice(0, key.indexOf('#'));

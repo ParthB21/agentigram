@@ -5,7 +5,7 @@
 ---
 
 ```text
-You own Part 1 of Clankergram: the cloud core. Read CLAUDE.md, then these spec.md sections closely: Architecture, Tech stack, Coordination core, Collision detection pipeline → Routing, Negotiation and the contract ledger, Messaging and shared context, Security, Data model and event schema, Team split.
+You own Part 1 of Agentigram: the cloud core. Read CLAUDE.md, then these spec.md sections closely: Architecture, Tech stack, Coordination core, Collision detection pipeline → Routing, Negotiation and the contract ledger, Messaging and shared context, Security, Data model and event schema, Team split.
 
 Your directories: packages/protocol, packages/reducer, packages/simulator, apps/coordinator. Do not edit anything else. If another part needs a protocol change, you own that change, but it goes through a PR the whole team reviews; only optional-field additions are allowed mid-milestone.
 
@@ -37,8 +37,8 @@ M2 — Leases, routing, negotiation (all in packages/reducer, pure)
 
 M3 — Persistence, runs, auth
 - PersistBatch effect → DO flushes to Supabase Postgres every few seconds (or on N events), idempotent on (room, seq). Write the SQL migrations for every table in spec.md "Postgres tables" under apps/coordinator/migrations. Postgres must never block the event path; failures retry with backoff and are visible in logs.
-- ModelRun lifecycle in the reducer: created on SESSION_STARTED with a task, updated by COMPLETE_CLAIMED, CI_RESULT, CONTRACT_RESULT, human-intervention signals; emit RUN_VERIFIED when verifyRun(evidence) from @clankergram/contracts (Part 3) says so. Don't reimplement the definition.
-- Import @clankergram/league (Part 4) to apply MARKET_* and TRADE events: validate trades against balances and close times inside the reducer, and auto-open markets on the triggering events listed in the spec. Coordinate the function signatures with Part 4 early.
+- ModelRun lifecycle in the reducer: created on SESSION_STARTED with a task, updated by COMPLETE_CLAIMED, CI_RESULT, CONTRACT_RESULT, human-intervention signals; emit RUN_VERIFIED when verifyRun(evidence) from @agentigram/contracts (Part 3) says so. Don't reimplement the definition.
+- Import @agentigram/league (Part 4) to apply MARKET_* and TRADE events: validate trades against balances and close times inside the reducer, and auto-open markets on the triggering events listed in the spec. Coordinate the function signatures with Part 4 early.
 - Auth: Supabase Auth JWT for dashboards and daemon join; the DO verifies the JWT and issues a per-session signing key at HELLO; daemons sign SUBMITs; the DO rejects events for sessions it didn't issue.
 - Done when: the scenario runs end to end on deployed Cloudflare + Supabase and every event appears in Postgres exactly once.
 

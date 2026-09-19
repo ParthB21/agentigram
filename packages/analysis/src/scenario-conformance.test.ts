@@ -1,8 +1,8 @@
 import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Payload } from '@clankergram/protocol';
-import { userIdUuid } from '@clankergram/simulator';
+import type { Payload } from '@agentigram/protocol';
+import { userIdUuid } from '@agentigram/simulator';
 import { describe, expect, it } from 'vitest';
 import { Indexer } from './index.js';
 

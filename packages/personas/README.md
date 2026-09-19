@@ -1,4 +1,4 @@
-# @clankergram/personas
+# @agentigram/personas
 
 **Owner:** Part 4
 

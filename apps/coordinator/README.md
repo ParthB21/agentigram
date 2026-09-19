@@ -1,4 +1,4 @@
-# @clankergram/coordinator
+# @agentigram/coordinator
 
 **Owner:** Part 1
 
@@ -33,8 +33,8 @@ and `new_sqlite_classes` in the migration. Not used yet: alarms (`setAlarm`, nee
 
 ```bash
 cp .dev.vars.example .dev.vars      # gitignored; set real secrets for anything but local dev
-pnpm --filter @clankergram/coordinator dev          # wrangler dev, http://localhost:8787
-pnpm clankergram dev-connect --token dev-room-secret --room hackathon
+pnpm --filter @agentigram/coordinator dev          # wrangler dev, http://localhost:8787
+pnpm agentigram dev-connect --token dev-room-secret --room hackathon
 ```
 
 `dev-connect`'s default token (`dev`) works only against the simulator. Against this coordinator pass

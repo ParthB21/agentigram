@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { runSpeculativeMerge } from './index.js';
 
-describe('@clankergram/specmerge', () => {
+describe('@agentigram/specmerge', () => {
   it('reports setup failures honestly without claiming checks ran', async () => {
     const result = await runSpeculativeMerge(
       { baseCommit: 'missing', sessions: [], diffs: {}, root: process.cwd() },

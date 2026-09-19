@@ -1,4 +1,4 @@
-import type { ApiChange, CollisionTier, SymbolKey, SymbolKind } from '@clankergram/protocol';
+import type { ApiChange, CollisionTier, SymbolKey, SymbolKind } from '@agentigram/protocol';
 
 /**
  * One exported symbol or member. Only keys, signatures and hashes ever leave the laptop

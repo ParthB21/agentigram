@@ -1,4 +1,4 @@
-import { symbolKey } from '@clankergram/protocol';
+import { symbolKey } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { ClaudeCodeAdapter } from './claude-code.js';
 

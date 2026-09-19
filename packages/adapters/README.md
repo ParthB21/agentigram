@@ -1,4 +1,4 @@
-# @clankergram/adapters
+# @agentigram/adapters
 
 **Owner:** Part 2
 

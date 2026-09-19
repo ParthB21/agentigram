@@ -1,4 +1,4 @@
-import type { RoomState } from '@clankergram/protocol';
+import type { RoomState } from '@agentigram/protocol';
 
 /** A session with no heartbeat for this long is stale (spec → Presence; Part 1 M1). */
 export const STALE_AFTER_MS = 30_000;

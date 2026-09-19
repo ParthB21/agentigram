@@ -1,7 +1,7 @@
 'use client';
 
-import { brierScore, createMarket, quote, trade } from '@clankergram/league';
-import type { MarketState } from '@clankergram/protocol';
+import { brierScore, createMarket, quote, trade } from '@agentigram/league';
+import type { MarketState } from '@agentigram/protocol';
 import { useMemo, useState } from 'react';
 import { marketRows } from '../lib/demo-data';
 

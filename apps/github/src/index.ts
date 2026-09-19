@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { Payload } from '@clankergram/protocol';
+import type { Payload } from '@agentigram/protocol';
 
 export type RunAttribution = { commit: string; runId?: string; model?: string };
 export type ContractCheck = {
@@ -45,8 +45,8 @@ export function parseAttribution(message: string, commit = ''): RunAttribution {
   }
   return {
     commit,
-    runId: trailers.get('agentigram-run') ?? trailers.get('clankergram-run'),
-    model: trailers.get('agentigram-model') ?? trailers.get('clankergram-model'),
+    runId: trailers.get('agentigram-run') ?? trailers.get('agentigram-run'),
+    model: trailers.get('agentigram-model') ?? trailers.get('agentigram-model'),
   };
 }
 

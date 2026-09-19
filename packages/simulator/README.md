@@ -1,4 +1,4 @@
-# @clankergram/simulator
+# @agentigram/simulator
 
 **Owner:** Part 1
 

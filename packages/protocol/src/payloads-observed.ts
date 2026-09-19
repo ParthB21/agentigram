@@ -10,7 +10,12 @@ export const FileRead = payload('FILE_READ', {
   path: z.string(),
   symbols: z.array(SymbolKeySchema).optional(),
 });
-export const FileWrite = payload('FILE_WRITE', { path: z.string(), worktree: z.string() });
+export const FileWrite = payload('FILE_WRITE', {
+  path: z.string(),
+  worktree: z.string(),
+  /** Lease generation observed by the edit guard. Omitted when no leased symbol is touched. */
+  fencingToken: z.number().int().nonnegative().optional(),
+});
 
 export const ApiChangeSchema = z.object({
   symbol: SymbolKeySchema,

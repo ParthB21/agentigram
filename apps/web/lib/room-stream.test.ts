@@ -1,4 +1,4 @@
-import { emptyRoomState } from '@clankergram/protocol';
+import { emptyRoomState } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import { applyFrame, initialStream, MAX_EVENTS, roomSocketUrl } from './room-stream';
 

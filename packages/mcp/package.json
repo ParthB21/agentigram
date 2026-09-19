@@ -1,5 +1,5 @@
 {
-  "name": "@clankergram/mcp",
+  "name": "@agentigram/mcp",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -15,7 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@clankergram/protocol": "workspace:*",
+    "@agentigram/protocol": "workspace:*",
     "zod": "^4.6.5"
   }
 }

@@ -1,4 +1,4 @@
-# @clankergram/web
+# @agentigram/web
 
 The Part 4 control room: live agent status, deterministic timeline replay, collision evidence,
 negotiation, contract ledger, model statistics, prediction league and presenter mode.
@@ -17,7 +17,7 @@ Then start the simulator and dashboard in separate terminals:
 
 ```bash
 pnpm sim --scenario user-id-uuid --speed 4
-pnpm --filter @clankergram/web dev
+pnpm --filter @agentigram/web dev
 ```
 
 Open <http://localhost:3000/team/hackathon>. The simulator uses
@@ -39,7 +39,7 @@ events, copy `.env.example` to `.env.local` and set `AI_GATEWAY_API_KEY`; `PERSO
 ## Verify
 
 ```bash
-pnpm --filter @clankergram/web test
-pnpm --filter @clankergram/web typecheck
-pnpm --filter @clankergram/web build
+pnpm --filter @agentigram/web test
+pnpm --filter @agentigram/web typecheck
+pnpm --filter @agentigram/web build
 ```

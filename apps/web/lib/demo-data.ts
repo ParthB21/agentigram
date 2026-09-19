@@ -1,4 +1,4 @@
-import type { Event, Payload } from '@clankergram/protocol';
+import type { Event, Payload } from '@agentigram/protocol';
 
 export const USER_ID_SYMBOL = 'src/types/user.ts#User.id:property';
 

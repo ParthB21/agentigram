@@ -19,6 +19,9 @@ export const SessionInfoSchema = z.object({
   intent: z
     .object({ task: z.string(), files: z.array(z.string()), symbols: z.array(SymbolKeySchema) })
     .optional(),
+  readFiles: z.array(z.string()).optional(),
+  readSymbols: z.array(SymbolKeySchema).optional(),
+  writeFiles: z.array(z.string()).optional(),
   startedAt: z.string(),
   lastHeartbeatAt: z.string(),
   endedAt: z.string().optional(),
@@ -31,6 +34,7 @@ export const LeaseSchema = z.object({
   symbols: z.array(SymbolKeySchema),
   fencingToken: z.number().int(),
   expiresAt: z.string(),
+  ttlMs: z.number().int().positive().optional(),
 });
 export type Lease = z.infer<typeof LeaseSchema>;
 
@@ -67,6 +71,7 @@ export const NegotiationSchema = z.object({
   accepted: z.array(z.string()),
   contract: ContractSchema.optional(),
   openedSeq: z.number().int(),
+  deadlineAt: z.string().optional(),
 });
 export type Negotiation = z.infer<typeof NegotiationSchema>;
 

@@ -27,7 +27,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @clankergram/web build
+      - run: pnpm --filter @agentigram/web build
         env:
           GITHUB_PAGES: 'true'
           NEXT_PUBLIC_PERSONAS_ENDPOINT: ''

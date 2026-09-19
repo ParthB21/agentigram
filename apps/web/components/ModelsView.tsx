@@ -4,7 +4,7 @@ import {
   posteriorSummary,
   seededRandom,
   thompsonRecommendation,
-} from '@clankergram/stats';
+} from '@agentigram/stats';
 import { duelRows, modelRows } from '../lib/demo-data';
 
 const percent = (value: number) => `${Math.round(value * 100)}%`;
