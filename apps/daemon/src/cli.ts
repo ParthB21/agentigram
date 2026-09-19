@@ -46,10 +46,13 @@ function host(value: string): InstallState['host'] {
   if (value === 'claude' || value === 'claude-code') return 'claude-code';
   if (value === 'codex') return 'codex';
   if (value === 'gemini' || value === 'gemini-cli') return 'gemini-cli';
-  throw new Error('--host must be claude, codex, or gemini');
+  if (value === 'antigravity' || value === 'agy') return 'antigravity';
+  throw new Error('--host must be claude, codex, gemini, or antigravity');
 }
 
 function verifyHost(value: InstallState['host']): void {
+  // Antigravity runs embedded in the IDE — no standalone binary to probe.
+  if (value === 'antigravity') return;
   const binary =
     value === 'codex' ? 'codex' : value === 'gemini-cli' ? 'gemini' : 'claude';
   const detected = spawnSync(binary, ['--version'], { stdio: 'ignore' });
@@ -117,7 +120,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .option('--root <path>', 'repository root', defaultRoot)
     .option('--room <id>', 'room identifier', 'hackathon')
     .requiredOption('--session <id>', 'local agent session name')
-    .option('--host <host>', 'claude, codex, or gemini', 'claude')
+    .option('--host <host>', 'claude, codex, gemini, or antigravity', 'claude')
     .option('--engineer <id>', 'engineer identifier')
     .action(
       async (options: {
@@ -148,6 +151,8 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           console.log('Open /hooks in Codex and trust the Agentigram hooks.');
         if (selectedHost === 'gemini-cli')
           console.log('Start Gemini CLI in this repository; Agentigram hooks and MCP are installed.');
+        if (selectedHost === 'antigravity')
+          console.log('Agentigram hooks and MCP are installed. Antigravity (agy) will coordinate automatically.');
       },
     );
 
@@ -156,7 +161,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .description('Join a P2P room from another laptop.')
     .option('--root <path>', 'repository root', defaultRoot)
     .requiredOption('--session <id>', 'local agent session name')
-    .option('--host <host>', 'claude, codex, or gemini', 'codex')
+    .option('--host <host>', 'claude, codex, gemini, or antigravity', 'antigravity')
     .option('--engineer <id>', 'engineer identifier')
     .action(
       async (
@@ -188,6 +193,8 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           console.log('Open /hooks in Codex and trust the Agentigram hooks.');
         if (selectedHost === 'gemini-cli')
           console.log('Start Gemini CLI in this repository; Agentigram hooks and MCP are installed.');
+        if (selectedHost === 'antigravity')
+          console.log('Agentigram hooks and MCP are installed. Antigravity (agy) will coordinate automatically.');
       },
     );
 

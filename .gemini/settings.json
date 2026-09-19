@@ -1,0 +1,87 @@
+{
+  "hooksConfig": {
+    "enabled": true
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "agentigram-SessionStart",
+            "command": "'/opt/homebrew/Cellar/node/26.9.0/bin/node' '/Users/vishnu/Documents/code/clankergram/apps/daemon/bin/agentigram.mjs' 'hook' 'SessionStart' '--root' '/Users/vishnu/Documents/code/clankergram'",
+            "timeout": 3000,
+            "description": "Forward Gemini CLI activity to Agentigram"
+          }
+        ]
+      }
+    ],
+    "BeforeAgent": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "agentigram-BeforeAgent",
+            "command": "'/opt/homebrew/Cellar/node/26.9.0/bin/node' '/Users/vishnu/Documents/code/clankergram/apps/daemon/bin/agentigram.mjs' 'hook' 'BeforeAgent' '--root' '/Users/vishnu/Documents/code/clankergram'",
+            "timeout": 3000,
+            "description": "Forward Gemini CLI activity to Agentigram"
+          }
+        ]
+      }
+    ],
+    "BeforeTool": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "agentigram-BeforeTool",
+            "command": "'/opt/homebrew/Cellar/node/26.9.0/bin/node' '/Users/vishnu/Documents/code/clankergram/apps/daemon/bin/agentigram.mjs' 'hook' 'BeforeTool' '--root' '/Users/vishnu/Documents/code/clankergram'",
+            "timeout": 3000,
+            "description": "Forward Gemini CLI activity to Agentigram"
+          }
+        ]
+      }
+    ],
+    "AfterTool": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "name": "agentigram-AfterTool",
+            "command": "'/opt/homebrew/Cellar/node/26.9.0/bin/node' '/Users/vishnu/Documents/code/clankergram/apps/daemon/bin/agentigram.mjs' 'hook' 'AfterTool' '--root' '/Users/vishnu/Documents/code/clankergram'",
+            "timeout": 3000,
+            "description": "Forward Gemini CLI activity to Agentigram"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "name": "agentigram-SessionEnd",
+            "command": "'/opt/homebrew/Cellar/node/26.9.0/bin/node' '/Users/vishnu/Documents/code/clankergram/apps/daemon/bin/agentigram.mjs' 'hook' 'SessionEnd' '--root' '/Users/vishnu/Documents/code/clankergram'",
+            "timeout": 3000,
+            "description": "Forward Gemini CLI activity to Agentigram"
+          }
+        ]
+      }
+    ]
+  },
+  "mcpServers": {
+    "agentigram": {
+      "command": "/opt/homebrew/Cellar/node/26.9.0/bin/node",
+      "args": [
+        "/Users/vishnu/Documents/code/clankergram/apps/daemon/bin/agentigram.mjs",
+        "mcp",
+        "--root",
+        "/Users/vishnu/Documents/code/clankergram"
+      ],
+      "cwd": "/Users/vishnu/Documents/code/clankergram",
+      "trust": true
+    }
+  }
+}

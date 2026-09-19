@@ -3,6 +3,9 @@ import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type AgentAdapter,
+  type AntigravityHookInput,
+  AntigravityHookInputSchema,
+  antigravityToolPaths,
   type ClaudeHookInput,
   ClaudeHookInputSchema,
   type CodexHookInput,
@@ -52,7 +55,7 @@ const ACTIONABLE_TYPES = new Set([
   'CONTEXT_ANSWER',
 ]);
 
-type HookInput = ClaudeHookInput | CodexHookInput | GeminiHookInput;
+type HookInput = ClaudeHookInput | CodexHookInput | GeminiHookInput | AntigravityHookInput;
 
 function branch(root: string): string {
   try {
@@ -354,6 +357,7 @@ export class LaptopDaemon {
   private parseHook(input: unknown): HookInput {
     if (this.state.host === 'codex') return CodexHookInputSchema.parse(input);
     if (this.state.host === 'gemini-cli') return GeminiHookInputSchema.parse(input);
+    if (this.state.host === 'antigravity') return AntigravityHookInputSchema.parse(input);
     return ClaudeHookInputSchema.parse(input);
   }
 
@@ -379,6 +383,7 @@ export class LaptopDaemon {
     const paths = (() => {
       if (this.state.host === 'codex') return codexToolPaths(input as CodexHookInput);
       if (this.state.host === 'gemini-cli') return geminiToolPaths(input as GeminiHookInput);
+      if (this.state.host === 'antigravity') return antigravityToolPaths(input as AntigravityHookInput);
       return claudeToolPaths(input as ClaudeHookInput);
     })();
     for (const path of paths) {

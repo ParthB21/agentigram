@@ -1,4 +1,5 @@
 import type { NewEvent } from '@agentigram/protocol';
+import { AntigravityAdapter } from './antigravity.js';
 import { ClaudeCodeAdapter } from './claude-code.js';
 import { CodexAdapter } from './codex.js';
 import { GeminiCliAdapter } from './gemini-cli.js';
@@ -37,6 +38,7 @@ export const HOST_CATALOG: readonly HostInfo[] = [
   { host: 'codex', displayName: 'Codex CLI', mode: 'hooks', status: 'ready' },
   { host: 'cursor', displayName: 'Cursor', mode: 'degraded', status: 'planned' },
   { host: 'gemini-cli', displayName: 'Gemini CLI', mode: 'hooks', status: 'ready' },
+  { host: 'antigravity', displayName: 'Antigravity (agy)', mode: 'hooks', status: 'ready' },
 ];
 
 export class UnknownHostError extends Error {
@@ -61,6 +63,7 @@ const factories = new Map<string, AdapterFactory>([
   ['claude-code', () => new ClaudeCodeAdapter()],
   ['codex', () => new CodexAdapter()],
   ['gemini-cli', () => new GeminiCliAdapter()],
+  ['antigravity', () => new AntigravityAdapter()],
 ]);
 
 /** Registers or replaces an adapter for a host (how Part 2 plugs real adapters in). */

@@ -31,7 +31,7 @@ export type InstallState = {
   root: string;
   roomId: string;
   mode: 'authority' | 'peer';
-  host: 'claude-code' | 'codex' | 'gemini-cli';
+  host: 'claude-code' | 'codex' | 'gemini-cli' | 'antigravity';
   sessionId: string;
   repositoryFingerprint: string;
   p2pStorage: string;
@@ -272,7 +272,7 @@ export function install(options: InstallOptions): InstallState {
       ? [join(root, SETTINGS_PATH), claudeConfigPath]
       : options.host === 'codex'
         ? [join(root, CODEX_HOOKS_PATH), join(root, CODEX_CONFIG_PATH)]
-        : [join(root, GEMINI_SETTINGS_PATH)];
+        : [join(root, GEMINI_SETTINGS_PATH)]; // gemini-cli and antigravity share .gemini/settings.json
   const trackedPaths = [
     join(root, GIT_HOOK_PATH),
     join(root, ORIGINAL_HOOK_PATH),
@@ -309,6 +309,7 @@ export function install(options: InstallOptions): InstallState {
         mergeCodexMcp(join(root, CODEX_CONFIG_PATH), root),
       );
     } else {
+      // gemini-cli and antigravity both use .gemini/settings.json for hooks + MCP
       writeAtomic(join(root, GEMINI_SETTINGS_PATH), mergeGeminiSettings(root));
     }
     installGitHook(root);
