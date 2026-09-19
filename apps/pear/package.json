@@ -1,0 +1,54 @@
+{
+  "name": "@agentigram/pear",
+  "version": "0.1.0",
+  "description": "Local QVAC explanations for Agentigram coordination events",
+  "private": true,
+  "type": "commonjs",
+  "bin": "bin.mjs",
+  "upgrade": "pear://<YOUR_AGENTIGRAM_RELEASE_KEY>",
+  "scripts": {
+    "build": "node scripts/check.mjs",
+    "typecheck": "node scripts/check.mjs",
+    "test": "brittle-bare test/index.js",
+    "start": "bare bin.mjs --no-updates",
+    "start:updates": "bare bin.mjs --updates",
+    "make": "node scripts/make.js",
+    "make:darwin-arm64": "node scripts/make.js darwin-arm64",
+    "make:win32-x64": "node scripts/make.js win32-x64"
+  },
+  "dependencies": {
+    "@qvac/inference": "^0.18.2",
+    "@qvac/langdetect-text": "^0.1.2",
+    "@qvac/llm-llamacpp": "^0.45.0",
+    "bare-events": "^2.9.2",
+    "bare-fs": "^4.8.1",
+    "bare-net": "^2.3.3",
+    "bare-os": "^3.9.0",
+    "bare-path": "^3.0.0",
+    "bare-process": "^4.5.0",
+    "bare-storage": "^1.1.0",
+    "bare-stream": "^2.13.4",
+    "bare-tui": "^0.3.0",
+    "framed-stream": "^1.0.1",
+    "hello-pear-worker": "^1.2.0",
+    "paparam": "^1.10.1",
+    "pear-runtime": "^1.2.0",
+    "ready-resource": "^1.2.0",
+    "which-runtime": "^1.4.0"
+  },
+  "devDependencies": {
+    "bare-build": "1.0.4",
+    "bare-runtime": "1.30.3",
+    "brittle": "^3.19.0"
+  },
+  "license": "Apache-2.0",
+  "qvac": {
+    "model": "SMOLLM2_360M_INST_Q8",
+    "ctxSize": 4096
+  },
+  "overrides": {
+    "bare-module-traverse": "2.4.4",
+    "bare-pack": "2.2.1",
+    "bare-thread": "1.2.4"
+  }
+}

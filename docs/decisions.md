@@ -105,6 +105,13 @@ Reference: `openagents-develop/` (OpenAgents, Apache 2.0). We took architecture 
 - 2026-09-19 · part 3 · Biome ignores `**/fixtures` · analysis fixtures contain deliberately odd code (private members, namespaces) and expected line numbers.
 - 2026-09-19 · part 3 · Finding for Part 1: the `user-id-uuid` scenario has Frontend read `src/ui/profile.tsx`, which the demo repo lacks; a test in `packages/analysis` pins this as the only drift.
 
+## Pear/QVAC local narrator (2026-09-19)
+
+- 2026-09-19 · local AI · **Supersedes the earlier decision not to use the full Pear runtime:** `apps/pear` is derived from `hello-pear-qvac-tui` and keeps its Bare TUI, `PearRuntime.run` QVAC isolation, framed request/cancellation protocol, clean model unload, and Pear OTA worker · the hackathon requires the starter to be a core application foundation.
+- 2026-09-19 · local AI · QVAC consumes only the daemon's bounded, redacted `presentation` projection over the existing Unix socket/Windows named pipe and has no daemon write path · model prose is presentation-only and cannot alter deterministic leases, collisions, contracts, edit guards, or routing.
+- 2026-09-19 · local AI · Agentigram defaults the Pear app to `SMOLLM2_360M_INST_Q8` with a 4096-token context while retaining configurable model/context flags · this is the smallest documented starter option and degrades to cited deterministic text when native inference is unavailable.
+- 2026-09-19 · local AI · pnpm publicly hoists workspace dependencies for development, while standalone builds use a disposable, package-lock-pinned flat npm tree and the starter-validated `bare-module-traverse`/`bare-pack`/`bare-thread` versions · `pear-runtime` and `bare-build` use static npm-style traversal and otherwise miss pnpm virtual-store siblings or worker/addon assets (verified failures included `zod`, `bare-tcp`, and `bare-worker/lib/worker-thread.js`).
+
 ## Part 2 · M1 Observe merged (2026-09-19)
 
 Historical section; the Half 1 P2P implementation above supersedes its remaining-work statements and wires the Electron shell to the daemon.

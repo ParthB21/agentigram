@@ -20,6 +20,8 @@ single-writer replicated event history, authoritative leases and fencing, negoti
 deterministic routing, Claude Code, Codex, and Gemini CLI hooks, MCP tools, and a live macOS control
 window.
 The Durable Object/WebSocket coordinator remains available as an optional hosted transport.
+Agentigram now also includes a starter-derived Pear/Bare terminal app that runs one local QVAC
+worker per laptop and explains notable coordination events without participating in authority.
 
 ## Quick start
 
@@ -44,6 +46,9 @@ npx pnpm@10.34.5 agentigram join '<invite>' --root . --session frontend --host g
 
 # Local transparent macOS window
 npx pnpm@10.34.5 agentigram ui --root .
+
+# Local Pear/Bare/QVAC narrator (new terminal; daemon must already be running)
+npx pnpm@10.34.5 run pear -- --root . --model SMOLLM2_360M_INST_Q8 --ctx 4096
 ```
 
 `pnpm sim` flags: `--scenario`, `--port` (8787), `--room` (`hackathon`), `--speed`, `--no-play`, `--list`.
@@ -59,6 +64,7 @@ npx pnpm@10.34.5 agentigram ui --root .
 | `packages/adapters` | 2 | Agent-host adapter registry, health tracking, secret redaction, peer-data wrapper. |
 | `packages/mcp` | 2 | MCP tool definitions and input validation, generated from protocol schemas. |
 | `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex/Gemini hooks, MCP, watcher, secure Electron bridge. |
+| `apps/pear` | Local AI | Core app derived from `hello-pear-qvac-tui`: Bare TUI, isolated QVAC and daemon workers, framed request IDs/cancellation, deterministic fallbacks, and Pear OTA. |
 | `packages/analysis`, `packages/contracts`, `apps/specmerge`, `apps/github`, `demo-repo` | 3 | Stubs with agreed signatures. |
 | `packages/league`, `packages/stats`, `packages/personas`, `apps/web` | 4 | Stubs, plus a dashboard shell that prints the raw event stream. |
 | `apps/coordinator` | 1 | Shared authority core plus the optional Cloudflare Durable Object/WebSocket transport. |
@@ -96,4 +102,8 @@ per-host CLI subprocess bridges and Python SDK. Full mapping and deviations: `do
   Gemini from the repository, trust the workspace, then verify them with `/hooks list` and
   `/mcp list`.
 - Source and transcripts stay local. Outbound structured payloads are validated and redacted.
+- QVAC sees only a bounded, schema-derived, twice-redacted presentation window over the local
+  daemon socket/pipe. Its cited explanations stay in the Pear TUI and never become reducer state or
+  coding-agent context. Full architecture, platform commands, attribution, and limitations:
+  [`apps/pear/README.md`](apps/pear/README.md).
 - `openagents-develop/` is a read-only reference checkout and is never committed.

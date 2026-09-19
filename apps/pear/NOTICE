@@ -1,0 +1,12 @@
+Agentigram Pear Local Narrator
+Copyright 2026 Agentigram contributors
+
+This product includes modified source derived from hello-pear-qvac-tui:
+https://github.com/holepunchto/hello-pear-qvac-tui
+Upstream revision: 605eb96186d25b1b3f888bb234844e4216433c57
+Upstream author metadata: Holepunch Inc
+License: Apache License 2.0
+
+Modified files carry notices identifying their derivation. Agentigram replaces the starter chat
+experience with a local, source-grounded coordination narrator, adds the local daemon worker and
+privacy projection, and retains the starter's Bare/QVAC/FramedStream/OTA architecture.

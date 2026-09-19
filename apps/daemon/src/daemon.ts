@@ -35,6 +35,7 @@ import { AuthorityTransport } from './authority-transport.js';
 import { CursorStore } from './cursor-store.js';
 import type { InstallState } from './install.js';
 import { createIpcServer, type IpcRequest, type IpcResponse } from './ipc.js';
+import { presentationWindow } from './presentation.js';
 import { summarise } from './summary.js';
 import { SymbolReader } from './symbol-reader.js';
 import { WorktreeWatcher } from './watcher.js';
@@ -156,6 +157,17 @@ export class LaptopDaemon {
           negotiations: Object.values(this.roomState.negotiations),
           summary: this.roomState.teamSummary,
           ...(authority?.inviteUri ? { invite: authority.inviteUri } : {}),
+        },
+      };
+    }
+    if (request.type === 'presentation') {
+      return {
+        ok: true,
+        output: {
+          roomId: this.state.roomId,
+          transport: this.transport.status,
+          headSeq: this.roomState.lastSeq,
+          events: presentationWindow(this.dashboardEvents, request.afterSeq),
         },
       };
     }
@@ -391,7 +403,8 @@ export class LaptopDaemon {
     const paths = (() => {
       if (this.state.host === 'codex') return codexToolPaths(input as CodexHookInput);
       if (this.state.host === 'gemini-cli') return geminiToolPaths(input as GeminiHookInput);
-      if (this.state.host === 'antigravity') return antigravityToolPaths(input as AntigravityHookInput);
+      if (this.state.host === 'antigravity')
+        return antigravityToolPaths(input as AntigravityHookInput);
       return claudeToolPaths(input as ClaudeHookInput);
     })();
     for (const path of paths) {

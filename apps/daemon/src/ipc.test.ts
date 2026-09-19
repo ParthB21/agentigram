@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { IpcRequestSchema } from './ipc.js';
 
 describe('IPC hook validation', () => {
+  it('accepts a bounded local presentation cursor', () => {
+    expect(IpcRequestSchema.parse({ type: 'presentation', afterSeq: 42 })).toEqual({
+      type: 'presentation',
+      afterSeq: 42,
+    });
+    expect(IpcRequestSchema.safeParse({ type: 'presentation', afterSeq: -1 }).success).toBe(false);
+  });
+
   it('accepts native Gemini CLI hook payloads', () => {
     expect(
       IpcRequestSchema.parse({

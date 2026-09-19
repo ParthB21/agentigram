@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync } from 'node:fs';
+import { chmodSync, mkdirSync, rmSync } from 'node:fs';
 import { createConnection, createServer, type Server, type Socket } from 'node:net';
 import { dirname } from 'node:path';
 import {
@@ -20,6 +20,10 @@ const HookRequestSchema = z.object({
   input: z.union([ClaudeHookInputSchema, CodexHookInputSchema, GeminiHookInputSchema]),
 });
 const StatusRequestSchema = z.object({ type: z.literal('status') });
+const PresentationRequestSchema = z.object({
+  type: z.literal('presentation'),
+  afterSeq: z.number().int().nonnegative(),
+});
 const HumanRequestSchema = z.object({
   type: z.literal('human'),
   action: z.discriminatedUnion('type', [
@@ -41,6 +45,7 @@ const ToolRequestSchema = z.object({
 export const IpcRequestSchema = z.discriminatedUnion('type', [
   HookRequestSchema,
   StatusRequestSchema,
+  PresentationRequestSchema,
   HumanRequestSchema,
   ToolRequestSchema,
 ]);
@@ -66,7 +71,7 @@ export function createIpcServer(
     rmSync(socketPath, { force: true });
     mkdirSync(dirname(socketPath), { recursive: true });
   }
-  return createServer((socket) => {
+  const server = createServer((socket) => {
     collect(socket, async (raw) => {
       try {
         const request = IpcRequestSchema.parse(JSON.parse(raw));
@@ -77,6 +82,8 @@ export function createIpcServer(
       }
     });
   });
+  if (!isPipe(socketPath)) server.on('listening', () => chmodSync(socketPath, 0o600));
+  return server;
 }
 
 export function requestIpc(
