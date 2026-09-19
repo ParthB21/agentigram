@@ -1,6 +1,7 @@
 node_modules
 dist
 .next
+.next-stale-*
 out
 next-env.d.ts
 .env*
@@ -10,6 +11,7 @@ next-env.d.ts
 .wrangler
 *.tsbuildinfo
 coverage
+.codex/
 
 # Read-only OpenAgents reference checkout
 openagents-develop/

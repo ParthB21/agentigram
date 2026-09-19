@@ -45,11 +45,13 @@ function requiredState(root: string): InstallState {
 function host(value: string): InstallState['host'] {
   if (value === 'claude' || value === 'claude-code') return 'claude-code';
   if (value === 'codex') return 'codex';
-  throw new Error('--host must be claude or codex');
+  if (value === 'gemini' || value === 'gemini-cli') return 'gemini-cli';
+  throw new Error('--host must be claude, codex, or gemini');
 }
 
 function verifyHost(value: InstallState['host']): void {
-  const binary = value === 'codex' ? 'codex' : 'claude';
+  const binary =
+    value === 'codex' ? 'codex' : value === 'gemini-cli' ? 'gemini' : 'claude';
   const detected = spawnSync(binary, ['--version'], { stdio: 'ignore' });
   if (detected.error || detected.status !== 0) {
     throw new Error(`${binary} was not found on PATH; install it before joining`);
@@ -115,7 +117,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .option('--root <path>', 'repository root', defaultRoot)
     .option('--room <id>', 'room identifier', 'hackathon')
     .requiredOption('--session <id>', 'local agent session name')
-    .option('--host <host>', 'claude or codex', 'claude')
+    .option('--host <host>', 'claude, codex, or gemini', 'claude')
     .option('--engineer <id>', 'engineer identifier')
     .action(
       async (options: {
@@ -144,6 +146,8 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         console.log(`Invite: ${String(status.invite)}`);
         if (selectedHost === 'codex')
           console.log('Open /hooks in Codex and trust the Agentigram hooks.');
+        if (selectedHost === 'gemini-cli')
+          console.log('Start Gemini CLI in this repository; Agentigram hooks and MCP are installed.');
       },
     );
 
@@ -152,7 +156,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .description('Join a P2P room from another laptop.')
     .option('--root <path>', 'repository root', defaultRoot)
     .requiredOption('--session <id>', 'local agent session name')
-    .option('--host <host>', 'claude or codex', 'codex')
+    .option('--host <host>', 'claude, codex, or gemini', 'codex')
     .option('--engineer <id>', 'engineer identifier')
     .action(
       async (
@@ -182,6 +186,8 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         console.log(`Joined room ${state.roomId} as ${state.sessionId}.`);
         if (selectedHost === 'codex')
           console.log('Open /hooks in Codex and trust the Agentigram hooks.');
+        if (selectedHost === 'gemini-cli')
+          console.log('Start Gemini CLI in this repository; Agentigram hooks and MCP are installed.');
       },
     );
 
@@ -228,7 +234,9 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         const response = await requestIpc(
           state.socketPath,
           { type: 'hook', event, input },
-          event === 'PreToolUse' ? PRE_TOOL_TIMEOUT_MS : DEFAULT_HOOK_TIMEOUT_MS,
+          event === 'PreToolUse' || event === 'BeforeTool'
+            ? PRE_TOOL_TIMEOUT_MS
+            : DEFAULT_HOOK_TIMEOUT_MS,
         );
         process.stdout.write(`${JSON.stringify(response.ok ? (response.output ?? {}) : {})}\n`);
       } catch (error) {

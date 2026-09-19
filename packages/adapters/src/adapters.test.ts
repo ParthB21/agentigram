@@ -47,6 +47,15 @@ describe('adapter registry', () => {
     expect(events[0]?.payload).toMatchObject({ type: 'SESSION_STARTED', host: 'codex' });
   });
 
+  it('gemini-cli is a ready hooks adapter', async () => {
+    const adapter = createAdapter('gemini-cli');
+    expect(adapter.mode).toBe('hooks');
+    expect(listHosts().find((host) => host.host === 'gemini-cli')).toMatchObject({
+      mode: 'hooks',
+      status: 'ready',
+    });
+  });
+
   it('rejects unknown hosts and lets Part 2 register real adapters', () => {
     expect(() => createAdapter('nope')).toThrow(UnknownHostError);
     registerAdapter('cursor', () => ({ host: 'cursor', mode: 'hooks', normalize: async () => [] }));

@@ -18,6 +18,7 @@ import { runtimePaths } from './runtime.js';
 const SETTINGS_PATH = join('.claude', 'settings.local.json');
 const CODEX_HOOKS_PATH = join('.codex', 'hooks.json');
 const CODEX_CONFIG_PATH = join('.codex', 'config.toml');
+const GEMINI_SETTINGS_PATH = join('.gemini', 'settings.json');
 const GIT_HOOK_PATH = join('.git', 'hooks', 'prepare-commit-msg');
 const ORIGINAL_HOOK_PATH = `${GIT_HOOK_PATH}.agentigram-original`;
 const MCP_SERVER_NAME = 'agentigram';
@@ -30,7 +31,7 @@ export type InstallState = {
   root: string;
   roomId: string;
   mode: 'authority' | 'peer';
-  host: 'claude-code' | 'codex';
+  host: 'claude-code' | 'codex' | 'gemini-cli';
   sessionId: string;
   repositoryFingerprint: string;
   p2pStorage: string;
@@ -186,6 +187,62 @@ function mergeCodexMcp(path: string, root: string): string {
   return `${existing.trimEnd()}${existing.trim() ? '\n\n' : ''}${block}`;
 }
 
+function mergeGeminiSettings(root: string): string {
+  const path = join(root, GEMINI_SETTINGS_PATH);
+  const settings = readJson(path);
+  const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
+  const command = (event: string) =>
+    [process.execPath, executable, 'hook', event, '--root', root].map(shellQuote).join(' ');
+  const hooks = { ...(settings.hooks as Record<string, unknown> | undefined) };
+  for (const [event, matcher] of [
+    ['SessionStart', undefined],
+    ['BeforeAgent', undefined],
+    ['BeforeTool', '.*'],
+    ['AfterTool', '.*'],
+    ['SessionEnd', undefined],
+  ] as const) {
+    const current = Array.isArray(hooks[event]) ? hooks[event] : [];
+    hooks[event] = [
+      ...current,
+      {
+        ...(matcher ? { matcher } : {}),
+        hooks: [
+          {
+            type: 'command',
+            name: `agentigram-${event}`,
+            command: command(event),
+            timeout: 3000,
+            description: 'Forward Gemini CLI activity to Agentigram',
+          },
+        ],
+      },
+    ];
+  }
+  const mcpServers = { ...(settings.mcpServers as Record<string, unknown> | undefined) };
+  if (MCP_SERVER_NAME in mcpServers) {
+    throw new Error('Gemini CLI already has an mcpServers.agentigram entry');
+  }
+  mcpServers[MCP_SERVER_NAME] = {
+    command: process.execPath,
+    args: [executable, 'mcp', '--root', root],
+    cwd: root,
+    trust: true,
+  };
+  return `${JSON.stringify(
+    {
+      ...settings,
+      hooksConfig: {
+        ...(settings.hooksConfig as Record<string, unknown> | undefined),
+        enabled: true,
+      },
+      hooks,
+      mcpServers,
+    },
+    null,
+    2,
+  )}\n`;
+}
+
 function installGitHook(root: string): void {
   const hook = join(root, GIT_HOOK_PATH);
   const original = join(root, ORIGINAL_HOOK_PATH);
@@ -210,12 +267,16 @@ export function install(options: InstallOptions): InstallState {
   const paths = runtimePaths(root, options.runtimeBase);
   if (existsSync(paths.state)) throw new Error('Agentigram is already joined in this repository');
   const claudeConfigPath = options.claudeConfigPath ?? join(homedir(), '.claude.json');
+  const hostPaths =
+    options.host === 'claude-code'
+      ? [join(root, SETTINGS_PATH), claudeConfigPath]
+      : options.host === 'codex'
+        ? [join(root, CODEX_HOOKS_PATH), join(root, CODEX_CONFIG_PATH)]
+        : [join(root, GEMINI_SETTINGS_PATH)];
   const trackedPaths = [
     join(root, GIT_HOOK_PATH),
     join(root, ORIGINAL_HOOK_PATH),
-    ...(options.host === 'claude-code'
-      ? [join(root, SETTINGS_PATH), claudeConfigPath]
-      : [join(root, CODEX_HOOKS_PATH), join(root, CODEX_CONFIG_PATH)]),
+    ...hostPaths,
   ];
   const candidateDirectories = [...new Set(trackedPaths.map((path) => dirname(path)))];
   const state: InstallState = {
@@ -241,12 +302,14 @@ export function install(options: InstallOptions): InstallState {
     if (options.host === 'claude-code') {
       writeAtomic(join(root, SETTINGS_PATH), mergeSettings(root, paths.socket));
       writeAtomic(claudeConfigPath, mergeMcpConfig(claudeConfigPath, root));
-    } else {
+    } else if (options.host === 'codex') {
       writeAtomic(join(root, CODEX_HOOKS_PATH), mergeCodexHooks(root));
       writeAtomic(
         join(root, CODEX_CONFIG_PATH),
         mergeCodexMcp(join(root, CODEX_CONFIG_PATH), root),
       );
+    } else {
+      writeAtomic(join(root, GEMINI_SETTINGS_PATH), mergeGeminiSettings(root));
     }
     installGitHook(root);
   } catch (error) {

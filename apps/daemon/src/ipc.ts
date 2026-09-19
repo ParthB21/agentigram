@@ -1,7 +1,11 @@
 import { mkdirSync, rmSync } from 'node:fs';
 import { createConnection, createServer, type Server, type Socket } from 'node:net';
 import { dirname } from 'node:path';
-import { ClaudeHookInputSchema, CodexHookInputSchema } from '@agentigram/adapters';
+import {
+  ClaudeHookInputSchema,
+  CodexHookInputSchema,
+  GeminiHookInputSchema,
+} from '@agentigram/adapters';
 import { MCP_TOOL_NAMES } from '@agentigram/protocol';
 import { z } from 'zod';
 import { isPipe } from './runtime.js';
@@ -13,7 +17,7 @@ export const DEFAULT_HOOK_TIMEOUT_MS = 1000;
 const HookRequestSchema = z.object({
   type: z.literal('hook'),
   event: z.string(),
-  input: z.union([ClaudeHookInputSchema, CodexHookInputSchema]),
+  input: z.union([ClaudeHookInputSchema, CodexHookInputSchema, GeminiHookInputSchema]),
 });
 const StatusRequestSchema = z.object({ type: z.literal('status') });
 const HumanRequestSchema = z.object({

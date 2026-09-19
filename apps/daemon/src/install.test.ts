@@ -83,4 +83,66 @@ describe('join / leave installation', () => {
     uninstall(root, join(base, 'runtime'));
     expect(existsSync(join(root, '.claude'))).toBe(false);
   });
+
+  it('installs Gemini hooks and MCP, then restores existing settings exactly', () => {
+    const base = mkdtempSync(join(tmpdir(), 'agentigram-gemini-install-'));
+    const root = join(base, 'repo');
+    const runtimeBase = join(base, 'runtime');
+    const settingsPath = join(root, '.gemini', 'settings.json');
+    mkdirSync(join(root, '.git'), { recursive: true });
+    mkdirSync(join(root, '.gemini'), { recursive: true });
+    const before = '{"ui":{"theme":"GitHub"},"hooks":{"BeforeTool":[]}}\n';
+    writeFileSync(settingsPath, before);
+
+    install({
+      root,
+      roomId: 'hackathon',
+      mode: 'peer',
+      host: 'gemini-cli',
+      sessionId: 'gemini-frontend',
+      repositoryFingerprint: 'repo',
+      runtimeBase,
+    });
+
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      ui: unknown;
+      hooksConfig: { enabled: boolean };
+      hooks: Record<
+        string,
+        Array<{ matcher?: string; hooks: Array<{ name: string; timeout: number }> }>
+      >;
+      mcpServers: { agentigram: { cwd: string; trust: boolean; args: string[] } };
+    };
+    expect(settings.ui).toEqual({ theme: 'GitHub' });
+    expect(settings.hooksConfig.enabled).toBe(true);
+    expect(settings.hooks.SessionStart?.[0]?.hooks[0]?.name).toBe('agentigram-SessionStart');
+    expect(settings.hooks.BeforeTool?.[0]?.matcher).toBe('.*');
+    expect(settings.hooks.AfterTool?.[0]?.hooks[0]?.timeout).toBe(3000);
+    expect(settings.mcpServers.agentigram).toMatchObject({ cwd: root, trust: true });
+    expect(settings.mcpServers.agentigram.args).toContain('mcp');
+
+    uninstall(root, runtimeBase);
+    expect(readFileSync(settingsPath, 'utf8')).toBe(before);
+  });
+
+  it('removes a newly-created Gemini settings directory on leave', () => {
+    const base = mkdtempSync(join(tmpdir(), 'agentigram-gemini-clean-install-'));
+    const root = join(base, 'repo');
+    const runtimeBase = join(base, 'runtime');
+    mkdirSync(join(root, '.git'), { recursive: true });
+
+    install({
+      root,
+      roomId: 'hackathon',
+      mode: 'peer',
+      host: 'gemini-cli',
+      sessionId: 'gemini-frontend',
+      repositoryFingerprint: 'repo',
+      runtimeBase,
+    });
+    expect(existsSync(join(root, '.gemini', 'settings.json'))).toBe(true);
+
+    uninstall(root, runtimeBase);
+    expect(existsSync(join(root, '.gemini'))).toBe(false);
+  });
 });

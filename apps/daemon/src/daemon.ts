@@ -10,6 +10,9 @@ import {
   claudeToolPaths,
   codexToolPaths,
   createAdapter,
+  type GeminiHookInput,
+  GeminiHookInputSchema,
+  geminiToolPaths,
   redactPayload,
   wrapPeerData,
 } from '@agentigram/adapters';
@@ -49,7 +52,7 @@ const ACTIONABLE_TYPES = new Set([
   'CONTEXT_ANSWER',
 ]);
 
-type HookInput = ClaudeHookInput | CodexHookInput;
+type HookInput = ClaudeHookInput | CodexHookInput | GeminiHookInput;
 
 function branch(root: string): string {
   try {
@@ -158,16 +161,31 @@ export class LaptopDaemon {
       return { ok: false, error: 'hook event does not match hook payload' };
     }
     const sessionId = this.state.sessionId;
-    if (input.hook_event_name === 'SessionStart') {
+    if (
+      input.hook_event_name === 'SessionStart' ||
+      (this.state.host === 'gemini-cli' && input.hook_event_name === 'BeforeAgent')
+    ) {
       this.sessions.add(sessionId);
       this.symbols.warm();
       await this.ensureWatcher(sessionId, input.cwd);
     }
-    if (input.hook_event_name === 'PreToolUse') {
+    let contextOutput: object | undefined;
+    if (input.hook_event_name === 'PreToolUse' || input.hook_event_name === 'BeforeTool') {
       const denial = this.editDenial(input);
-      if (denial) return { ok: true, output: preToolDecision('deny', denial) };
+      if (denial) {
+        return {
+          ok: true,
+          output: preToolDecision('deny', denial, this.state.host === 'gemini-cli'),
+        };
+      }
+      if (this.state.host !== 'gemini-cli') {
+        const context = this.drainInbox(sessionId);
+        if (context) contextOutput = hookContext('PreToolUse', context);
+      }
+    }
+    if (input.hook_event_name === 'BeforeAgent') {
       const context = this.drainInbox(sessionId);
-      if (context) return { ok: true, output: preToolContext(context) };
+      if (context) contextOutput = hookContext('BeforeAgent', context);
     }
     if (input.hook_event_name === 'Stop') {
       const context = this.drainInbox(sessionId);
@@ -203,6 +221,7 @@ export class LaptopDaemon {
     if (input.hook_event_name === 'SessionStart') {
       return { ok: true, output: sessionContext(this.syncSummary()) };
     }
+    if (contextOutput) return { ok: true, output: contextOutput };
     return { ok: true, output: {} };
   }
 
@@ -333,9 +352,9 @@ export class LaptopDaemon {
   }
 
   private parseHook(input: unknown): HookInput {
-    return this.state.host === 'codex'
-      ? CodexHookInputSchema.parse(input)
-      : ClaudeHookInputSchema.parse(input);
+    if (this.state.host === 'codex') return CodexHookInputSchema.parse(input);
+    if (this.state.host === 'gemini-cli') return GeminiHookInputSchema.parse(input);
+    return ClaudeHookInputSchema.parse(input);
   }
 
   private receive(events: Event[]): void {
@@ -357,10 +376,11 @@ export class LaptopDaemon {
   }
 
   private editDenial(input: HookInput): string | undefined {
-    const paths =
-      this.state.host === 'codex'
-        ? codexToolPaths(input as CodexHookInput)
-        : claudeToolPaths(input as ClaudeHookInput);
+    const paths = (() => {
+      if (this.state.host === 'codex') return codexToolPaths(input as CodexHookInput);
+      if (this.state.host === 'gemini-cli') return geminiToolPaths(input as GeminiHookInput);
+      return claudeToolPaths(input as ClaudeHookInput);
+    })();
     for (const path of paths) {
       const lease = this.leaseForPath(path);
       if (lease && lease.sessionId !== this.state.sessionId) {
@@ -458,7 +478,8 @@ function normalisePath(path: string): string {
   return path.replaceAll('\\\\', '/').replace(/^\.\//, '');
 }
 
-function preToolDecision(decision: 'deny', reason: string): object {
+function preToolDecision(decision: 'deny', reason: string, gemini = false): object {
+  if (gemini) return { decision, reason };
   return {
     hookSpecificOutput: {
       hookEventName: 'PreToolUse',
@@ -468,8 +489,8 @@ function preToolDecision(decision: 'deny', reason: string): object {
   };
 }
 
-function preToolContext(context: string): object {
-  return { hookSpecificOutput: { hookEventName: 'PreToolUse', additionalContext: context } };
+function hookContext(event: 'PreToolUse' | 'BeforeAgent', context: string): object {
+  return { hookSpecificOutput: { hookEventName: event, additionalContext: context } };
 }
 
 function sessionContext(summary: object): object {

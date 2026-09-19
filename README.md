@@ -17,7 +17,8 @@ runs a play-money prediction league.
 
 The Half 1 vertical slice is implemented: clean Agentigram naming, encrypted P2P rooms, a
 single-writer replicated event history, authoritative leases and fencing, negotiation state,
-deterministic routing, Claude Code and Codex hooks, MCP tools, and a live macOS control window.
+deterministic routing, Claude Code, Codex, and Gemini CLI hooks, MCP tools, and a live macOS control
+window.
 The Durable Object/WebSocket coordinator remains available as an optional hosted transport.
 
 ## Quick start
@@ -38,6 +39,9 @@ npx pnpm@10.34.5 agentigram create --root . --session backend --host claude
 # Second laptop, in a clone of the same Git repository
 npx pnpm@10.34.5 agentigram join '<invite>' --root . --session payments --host codex
 
+# Third laptop, using Gemini CLI (installs project hooks + Agentigram MCP automatically)
+npx pnpm@10.34.5 agentigram join '<invite>' --root . --session frontend --host gemini --engineer alex
+
 # Local transparent macOS window
 npx pnpm@10.34.5 agentigram ui --root .
 ```
@@ -54,7 +58,7 @@ npx pnpm@10.34.5 agentigram ui --root .
 | `packages/p2p` | 1 | Hyperswarm discovery, Protomux control channel, Corestore/Hypercore event replication, room invites. |
 | `packages/adapters` | 2 | Agent-host adapter registry, health tracking, secret redaction, peer-data wrapper. |
 | `packages/mcp` | 2 | MCP tool definitions and input validation, generated from protocol schemas. |
-| `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex hooks, MCP, watcher, secure Electron bridge. |
+| `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex/Gemini hooks, MCP, watcher, secure Electron bridge. |
 | `packages/analysis`, `packages/contracts`, `apps/specmerge`, `apps/github`, `demo-repo` | 3 | Stubs with agreed signatures. |
 | `packages/league`, `packages/stats`, `packages/personas`, `apps/web` | 4 | Stubs, plus a dashboard shell that prints the raw event stream. |
 | `apps/coordinator` | 1 | Shared authority core plus the optional Cloudflare Durable Object/WebSocket transport. |
@@ -88,5 +92,8 @@ per-host CLI subprocess bridges and Python SDK. Full mapping and deviations: `do
   but become read-only; v1 does not elect a replacement automatically.
 - Codex project hooks require review. Run `/hooks` in Codex after `create` or `join` and trust the
   generated Agentigram hook definitions.
+- Gemini CLI hooks and the `agentigram` MCP server are merged into `.gemini/settings.json`. Start
+  Gemini from the repository, trust the workspace, then verify them with `/hooks list` and
+  `/mcp list`.
 - Source and transcripts stay local. Outbound structured payloads are validated and redacted.
 - `openagents-develop/` is a read-only reference checkout and is never committed.
