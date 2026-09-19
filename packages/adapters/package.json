@@ -15,6 +15,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@clankergram/protocol": "workspace:*"
+    "@clankergram/protocol": "workspace:*",
+    "zod": "^4.6.5"
   }
 }

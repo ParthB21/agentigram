@@ -1,4 +1,3 @@
-import { NotImplementedError } from '@clankergram/protocol';
 import { describe, expect, it } from 'vitest';
 import { buildProgram } from './cli.js';
 import { summarise } from './summary.js';
@@ -6,7 +5,9 @@ import { summarise } from './summary.js';
 describe('clankergram CLI', () => {
   it('--help lists the commands', () => {
     const help = buildProgram().helpInformation();
-    for (const cmd of ['dev-connect', 'join', 'mcp']) expect(help).toContain(cmd);
+    for (const cmd of ['dev-connect', 'join', 'leave', 'daemon', 'hook', 'mcp', 'status']) {
+      expect(help).toContain(cmd);
+    }
   });
 
   it('dev-connect exposes url/room/session options', () => {
@@ -16,10 +17,10 @@ describe('clankergram CLI', () => {
     );
   });
 
-  it('join and mcp are Part 2 stubs that fail loudly rather than pretend to work', async () => {
-    const program = buildProgram().exitOverride();
-    await expect(program.parseAsync(['node', 'clankergram', 'mcp'])).rejects.toThrow(
-      NotImplementedError,
+  it('join exposes coordinator and engineer options', () => {
+    const command = buildProgram().commands.find((candidate) => candidate.name() === 'join');
+    expect(command?.options.map((option) => option.long)).toEqual(
+      expect.arrayContaining(['--root', '--coordinator', '--engineer']),
     );
   });
 

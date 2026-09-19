@@ -1,4 +1,5 @@
-import { type NewEvent, NotImplementedError } from '@clankergram/protocol';
+import type { NewEvent } from '@clankergram/protocol';
+import { ClaudeCodeAdapter } from './claude-code.js';
 
 /** What an adapter needs to stamp events it produces. Ids and time never come from the adapter. */
 export type AdapterContext = {
@@ -6,6 +7,8 @@ export type AdapterContext = {
   engineerId: string;
   sessionId: string;
   newId: () => string;
+  branch?: string;
+  worktree?: string;
 };
 
 /** Normalises one agent host's raw signals (hook payloads) into protocol events. */
@@ -13,14 +16,14 @@ export interface AgentAdapter {
   readonly host: string;
   /** `hooks`: full passive capture. `degraded`: file watcher + MCP only (spec → Adapters). */
   readonly mode: 'hooks' | 'degraded';
-  normalize(input: unknown, ctx: AdapterContext): NewEvent[];
+  normalize(input: unknown, ctx: AdapterContext): Promise<NewEvent[]>;
 }
 
 export type HostInfo = {
   host: string;
   displayName: string;
   mode: AgentAdapter['mode'];
-  status: 'stub' | 'planned';
+  status: 'ready' | 'planned';
 };
 
 /**
@@ -28,7 +31,7 @@ export type HostInfo = {
  * the others are added "as their hook support allows" (spec → Adapters).
  */
 export const HOST_CATALOG: readonly HostInfo[] = [
-  { host: 'claude-code', displayName: 'Claude Code', mode: 'hooks', status: 'stub' },
+  { host: 'claude-code', displayName: 'Claude Code', mode: 'hooks', status: 'ready' },
   { host: 'codex', displayName: 'Codex CLI', mode: 'degraded', status: 'planned' },
   { host: 'cursor', displayName: 'Cursor', mode: 'degraded', status: 'planned' },
   { host: 'gemini-cli', displayName: 'Gemini CLI', mode: 'degraded', status: 'planned' },
@@ -41,26 +44,12 @@ export class UnknownHostError extends Error {
   }
 }
 
-/**
- * Claude Code adapter. Hook payload shapes must be verified against the current official docs
- * before this is implemented (CLAUDE.md rule 10), so this is deliberately a stub.
- */
-class ClaudeCodeAdapter implements AgentAdapter {
-  readonly host = 'claude-code';
-  readonly mode = 'hooks' as const;
-  normalize(): NewEvent[] {
-    throw new NotImplementedError(
-      'ClaudeCodeAdapter.normalize (Part 2: verify hook payloads first)',
-    );
-  }
-}
-
 /** Host with no usable hooks: nothing to normalise; the watcher and MCP carry the signal. */
 class DegradedAdapter implements AgentAdapter {
   readonly mode = 'degraded' as const;
   constructor(readonly host: string) {}
-  normalize(): NewEvent[] {
-    return [];
+  async normalize(): Promise<NewEvent[]> {
+    return Promise.resolve([]);
   }
 }
 

@@ -1,0 +1,8 @@
+{
+  "session_id": "session-fixture",
+  "transcript_path": "/Users/example/.claude/projects/repo/session-fixture.jsonl",
+  "cwd": "/repo",
+  "hook_event_name": "SessionStart",
+  "source": "startup",
+  "model": "claude-sonnet-5"
+}

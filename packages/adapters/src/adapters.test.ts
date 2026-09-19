@@ -1,4 +1,4 @@
-import { NotImplementedError, symbolKey } from '@clankergram/protocol';
+import { symbolKey } from '@clankergram/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   type AdapterStatus,
@@ -15,25 +15,33 @@ import {
 } from './index.js';
 
 describe('adapter registry', () => {
-  it('claude-code is a hooks adapter that is a stub until payloads are verified', () => {
+  it('claude-code is a ready hooks adapter', async () => {
     const a = createAdapter('claude-code');
     expect(a.mode).toBe('hooks');
-    expect(() =>
-      a.normalize({}, { roomId: 'r', engineerId: 'e', sessionId: 's', newId: () => 'x' }),
-    ).toThrow(NotImplementedError);
+    const events = await a.normalize(
+      {
+        session_id: 's',
+        transcript_path: '/tmp/transcript.jsonl',
+        cwd: '/repo',
+        hook_event_name: 'SessionStart',
+        model: 'claude-sonnet-5',
+      },
+      { roomId: 'r', engineerId: 'e', sessionId: 's', newId: () => 'x', branch: 'main' },
+    );
+    expect(events[0]?.payload).toMatchObject({ type: 'SESSION_STARTED', branch: 'main' });
   });
 
-  it('catalogued hosts without an adapter degrade to watcher + MCP (no events from hooks)', () => {
+  it('catalogued hosts without an adapter degrade to watcher + MCP (no events from hooks)', async () => {
     const a = createAdapter('codex');
     expect(a.mode).toBe('degraded');
     expect(
-      a.normalize({}, { roomId: 'r', engineerId: 'e', sessionId: 's', newId: () => 'x' }),
+      await a.normalize({}, { roomId: 'r', engineerId: 'e', sessionId: 's', newId: () => 'x' }),
     ).toEqual([]);
   });
 
   it('rejects unknown hosts and lets Part 2 register real adapters', () => {
     expect(() => createAdapter('nope')).toThrow(UnknownHostError);
-    registerAdapter('cursor', () => ({ host: 'cursor', mode: 'hooks', normalize: () => [] }));
+    registerAdapter('cursor', () => ({ host: 'cursor', mode: 'hooks', normalize: async () => [] }));
     expect(createAdapter('cursor').mode).toBe('hooks');
     expect(listHosts().map((h) => h.host)).toContain('gemini-cli');
   });
