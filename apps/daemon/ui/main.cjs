@@ -3,14 +3,15 @@ const path = require('node:path');
 
 function createWindow() {
   const window = new BrowserWindow({
-    width: 1320,
-    height: 860,
-    minWidth: 980,
-    minHeight: 680,
-    backgroundColor: '#11151c',
+    width: 940,
+    height: 600,
+    minWidth: 720,
+    minHeight: 480,
+    transparent: true,
+    backgroundColor: '#00000000',
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 18, y: 18 },
-    vibrancy: 'sidebar',
+    vibrancy: 'under-window',
     visualEffectState: 'active',
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

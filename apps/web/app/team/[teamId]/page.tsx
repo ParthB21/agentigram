@@ -1,6 +1,6 @@
-import { EventStream } from '../../../components/EventStream';
+import { RoomView } from '../../../components/RoomView';
 
 export default async function TeamPage({ params }: { params: Promise<{ teamId: string }> }) {
   const { teamId } = await params;
-  return <EventStream teamId={teamId} />;
+  return <RoomView teamId={teamId} />;
 }

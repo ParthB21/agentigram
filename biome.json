@@ -11,6 +11,7 @@
       "!**/.wrangler",
       "!**/fixtures",
       "!**/dist",
+      "!**/out",
       "!**/next-env.d.ts",
       "!pnpm-lock.yaml"
     ]
