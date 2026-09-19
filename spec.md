@@ -74,6 +74,24 @@ What Clankergram adds that those systems could not:
 
 One-line pitch for judges: *"Crystal proved speculative merging works but humans wouldn't act on it. Agents will."* Do a fresh scan of multi-agent coding tools before the demo; this space moves monthly.
 
+### Reference implementation: OpenAgents
+
+[OpenAgents](https://github.com/openagents-org/openagents) (Apache 2.0) is an open-source workspace where many agents, on different machines and hosts, share threads, files and a browser. It is a useful worked example of the *plumbing* Clankergram needs, and a useful contrast on the *engine*: it connects agents so they can talk, but it does not observe code, compute impact, lease symbols or compile agreements. That is the gap this spec fills.
+
+The reference checkout lives in `openagents-develop/` (read-only, not part of this repo). What was studied and adopted:
+
+| Concern | How OpenAgents does it | What Clankergram takes | Where it differs |
+| --- | --- | --- | --- |
+| Event model | One `Event` type with hierarchical names, wildcard subscriptions, visibility levels (public, network, channel, direct, restricted, mod-only) | Wildcard pattern matching and visibility-before-pattern filtering | Two audiences only: agents and dashboards. Dashboard-only types can never be widened by a wildcard. |
+| Agent hosts | An adapter per host behind a registry; ~22 hosts, each bridging a CLI or API | Adapter registry, host catalog, graceful degraded mode | Adapters normalise hook payloads into events; they do not host or spawn the agent. |
+| Connection health | Heartbeat every 30 s; report an error only after consecutive failures | Same threshold; recovery reported once | Failure text is redacted before it is reported. |
+| Daemon | Supervises adapters, restarts with 2 s → 60 s backoff, gives up after 10 crashes | Same loop | The crash counter resets after a run stays healthy, so a long-lived daemon is not killed by old crashes. |
+| Resume | Persisted poll cursor; stale messages skipped on replay | Persisted `lastSeq` sent in `HELLO`; events older than an hour are not injected into agent context | Cursor is the coordinator's `seq`, so replay is exact rather than best-effort. |
+| Untrusted text | Redacts secrets from diagnostics; pins length-capped knowledge into prompts | Secret redactor on every outbound payload; labelled, length-capped peer-data wrapper | Payload redaction leaves commit SHAs, signature hashes and symbol keys intact. Wrapped content cannot close its own wrapper. |
+| Tools for agents | Tool definitions built as data, individually switchable, served over stdio JSON-RPC | Tool definitions as data, individually switchable | Generated from the protocol's Zod schemas; transport is the official MCP SDK. |
+
+Not adopted: its REST workspace API, channels/forum/wiki modules, web Studio, launcher TUI and Python SDK. They implement chat and agent hosting, which Clankergram deliberately does not.
+
 ---
 
 ## Architecture
@@ -153,7 +171,7 @@ The daemon captures agent activity through channels ranked by trust: what the fi
 
 ### Adapters
 
-Each agent host gets a thin adapter that normalises its hooks into Clankergram events. Build **Claude Code** first (richest hook set: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd). Add Codex, Cursor and Gemini CLI adapters as their hook support allows. A host with no hooks still works in degraded mode: watcher + MCP.
+Each agent host gets a thin adapter that normalises its hooks into Clankergram events. Build **Claude Code** first (richest hook set: SessionStart, UserPromptSubmit, PreToolUse, PostToolUse, Stop, SessionEnd). Add Codex, Cursor and Gemini CLI adapters as their hook support allows. A host with no hooks still works in degraded mode: watcher + MCP. Adapters are looked up by host name in a registry (`createAdapter(host)`); a known host with no adapter yet resolves to the degraded adapter, and an unknown host is an error. (Registry pattern from OpenAgents; see Prior art.)
 
 ### Read sets
 
@@ -191,6 +209,7 @@ Each room is one Durable Object: every event passes through it, gets a sequence 
 ### Delivery
 
 - Clients (daemons, dashboards) connect over WebSocket and send their last seen `seq`. The DO replays the gap, then streams. Reconnects lose nothing.
+- A daemon persists its last applied `seq` per room after every batch, so a restart resumes where it stopped. Replayed events older than an hour still advance the cursor but are not injected into the agent's context, so a laptop that was off overnight never acts on stale peer instructions.
 - Every client event carries a client-generated id; the DO drops duplicates, so retries are safe (at-least-once in, exactly-once applied).
 
 ### Leases, not locks
@@ -449,12 +468,12 @@ Clankergram pipes one agent's words into another agent's context, which makes it
 
 | Threat | Mitigation |
 | --- | --- |
-| Agent A (or a poisoned file A read) injects instructions into Agent B via a message | Inter-agent content is delivered only as typed, schema-validated events, wrapped and labelled as untrusted data from a named peer. Free text is length-capped and never placed in system-level context. |
+| Agent A (or a poisoned file A read) injects instructions into Agent B via a message | Inter-agent content is delivered only as typed, schema-validated events, wrapped and labelled as untrusted data from a named peer. Free text is length-capped (whole lines kept from both ends) and never placed in system-level context. Content that contains the wrapper's own tag is escaped so it cannot close the wrapper early. |
 | Persona banter leaks into agent context | Personas render only on the dashboard. Agents receive the structured event, never the banter. |
 | Peer message asks an agent to run a command or exfiltrate data | Agent instructions state peer messages are information, never commands. Clankergram tools expose no "run this" capability to peers. The host's own permission prompts stay on. |
 | Source code leaves the laptop | Default: only symbol keys, signature hashes and short signatures leave. Diffs go only to the speculative-merge worker, and only when the team opts in (per repo). Self-hostable worker for teams that won't send diffs at all. |
 | Transcripts leave the laptop | Never. `ask_context` answers are generated locally from retrieved passages; only the redacted answer is sent. |
-| Secrets in diffs or events | Daemon runs a secret scanner on outbound payloads and redacts matches. |
+| Secrets in diffs or events | Daemon runs a secret scanner on outbound payloads and redacts matches. Structural fields (paths, symbol keys, commit ids, hashes) are never rewritten, and the opaque-long-token heuristic is off for payloads because commit SHAs and signature hashes are legitimately 40+ characters. |
 | A malicious room member | Room membership via Supabase Auth; every event signed by the sending daemon's session key; the coordinator rejects events for sessions it didn't issue. |
 | Stale or spoofed lease owner | Fencing tokens (see Coordination core). |
 | Hook denial abused to stall a rival agent | Leases expire; humans can break them; lease hoarding shows on the dashboard. |

@@ -16,7 +16,8 @@ packages/
   reducer/      Part 1  Pure reducer: (RoomState, Event) -> { state, effects }. No I/O.
   simulator/    Part 1  Scripted scenarios + mock coordinator WebSocket server for local dev.
   adapters/     Part 2  Agent-host adapters (Claude Code first): hook payload -> protocol events.
-  mcp/          Part 2  MCP server tools (stdio shim -> daemon socket).
+                        Also: adapter registry, health tracker, secret redactor, peer-data wrapper (from OpenAgents).
+  mcp/          Part 2  MCP server tools (stdio shim -> daemon socket). Tool defs generated from protocol schemas.
   analysis/     Part 3  Symbol index, API delta, intent resolution, read sets, tiers 0-2.
   contracts/    Part 3  Contract compiler: contract spec -> check files.
   league/       Part 4  LMSR engine, market lifecycle, resolution rules, Brier scoring. Pure.
@@ -25,6 +26,7 @@ packages/
 apps/
   coordinator/  Part 1  Cloudflare Worker + Durable Object per room.
   daemon/       Part 2  `clankergram` CLI + local daemon (join, mcp, hook receiver, watcher, OTel).
+                        Also: reconnecting room client, cursor persistence, process supervisor (from OpenAgents).
   specmerge/    Part 3  Speculative-merge worker (container).
   github/       Part 3  GitHub App webhook handler + check runs.
   web/          Part 4  Next.js dashboard.
@@ -44,6 +46,10 @@ pnpm lint                          # biome check .
 pnpm --filter @clankergram/<pkg> test
 pnpm sim                           # mock coordinator on ws://localhost:8787 + default scenario
 pnpm sim --scenario user-id-uuid   # replay the canonical demo scenario
+                                   # flags: --port 8787 --room hackathon --speed 1 --no-play --list
+pnpm clankergram --help            # the daemon CLI (dev launcher through tsx)
+pnpm clankergram dev-connect --session payments   # connect to the simulator and log events
+pnpm --filter @clankergram/web dev # dashboard at http://localhost:3000/team/hackathon
 ```
 
 No Turborepo or Nx. `pnpm -r` / `pnpm --filter` only.
@@ -67,11 +73,31 @@ No Turborepo or Nx. `pnpm -r` / `pnpm --filter` only.
 - Package names: `@clankergram/<dir-name>`. Internal deps use `workspace:*`.
 - Tests: Vitest, colocated as `*.test.ts`. Coordination logic gets scenario tests through the simulator. Stats and league get property tests (prices sum to 1, costs are path-independent, etc.).
 - Formatting and lint: Biome. Run `pnpm lint` before committing.
-- Errors: throw typed errors inside libraries; convert to protocol `ERROR` wire messages at process boundaries. Never swallow errors silently.
+- Errors: throw typed errors inside libraries; convert to protocol `ERROR` wire messages at process boundaries. Never swallow errors silently. Stubs owned by a later part throw `NotImplementedError` from `@clankergram/protocol`.
+- Internal packages export TypeScript source (`exports` → `./src/index.ts`); `build` is `tsc --noEmit`. Import siblings with `.js` specifiers (NodeNext). `apps/web` therefore builds with webpack (`next … --webpack`).
+- Where rules 5–7 are implemented: `isAgentVisible` / `subscriptionMatches` (protocol) for 5, `wrapPeerData` (adapters) for 6, `redactPayload` (adapters, applied in `RoomClient.submit`) for 7. Use them; don't re-implement.
+- Node 22 is the target. The M0 scaffold was built on Node 20, so dependencies are pinned to versions that run on both (see `docs/decisions.md`).
 - Logging: `pino` in Node processes, structured, with `roomId`, `sessionId`, `seq` fields where known.
 - IDs: `crypto.randomUUID()` for client ids; `seq` is assigned only by the coordinator.
 - Symbol keys: `<repo-relative path>#<ExportName>[.<member>]:<kind>`, e.g. `src/types/user.ts#User.id:property`. Use the helper in `@clankergram/protocol`; never build keys by hand.
 - Keep files under ~300 lines; split by responsibility.
+
+## Reused from OpenAgents
+
+`openagents-develop/` (repo root, untracked, Apache 2.0) is a read-only reference checkout of OpenAgents, a multi-agent chat/workspace platform. We reuse its plumbing patterns, not its product. Do not edit it, import from it, or commit it. Before building something in the left column, look at how OpenAgents did it (and why the right column differs).
+
+| Need | OpenAgents source | Clankergram module | Difference |
+| --- | --- | --- | --- |
+| Event patterns and audience filtering | `sdk/src/openagents/models/event.py` (`matches_pattern`, `is_visible_to_agent`, `EventSubscription`) | `protocol/visibility.ts` | Visibility is checked before the pattern; six levels collapse to `agent` / `dashboard`. |
+| Adapter per agent host | `packages/agent-connector/src/adapters/index.js`, `registry/*.json` | `adapters/registry.ts` | Adapters are stateless normalisers (hooks → events), not subprocess bridges. Hosts without hooks degrade to watcher + MCP. |
+| Heartbeat health | `adapters/base.js` (`HEARTBEAT_ERROR_THRESHOLD`) | `adapters/health.ts` | Same threshold; failure text is redacted. |
+| Secret scrubbing | `adapters/utils.js` (`redactSecrets`) | `adapters/redact.ts` | Long-token catch-all is opt-in (payloads carry commit SHAs and signature hashes); structural fields are skipped. |
+| Length-capped injected context | `adapters/decision-log.js` (`renderPinnedDecisions`) | `adapters/peer-data.ts` | Adds labelling and `<peer-data>` breakout escaping. |
+| Process supervision | `daemon.js` (restart loop) | `daemon/supervisor.ts` | Crash counter resets after a healthy run. |
+| Resume and stale-skip | `adapters/base.js` (cursor persistence, `STALE_MESSAGE_MAX_AGE_MS`) | `daemon/cursor-store.ts`, `room-client.ts` | Cursor is the coordinator `seq`, sent as `HELLO.lastSeq`. |
+| MCP tool definitions | `mcp-server.js` (`buildToolDefs`) | `mcp/tools.ts` | Generated from protocol schemas; transport will be the official MCP SDK, not hand-rolled JSON-RPC. |
+
+Not adopted: workspace REST client, channels/forum/wiki mods, Studio, launcher TUI, per-host CLI subprocess adapters, the Python SDK. Each deviation is logged in `docs/decisions.md`. If you port another OpenAgents pattern, add a row here and a line there.
 
 ## The canonical scenario
 

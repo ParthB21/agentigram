@@ -1,0 +1,30 @@
+{
+  "name": "@clankergram/daemon",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "start": "tsx src/cli.ts",
+    "clankergram": "node bin/clankergram.mjs"
+  },
+  "dependencies": {
+    "pino": "^10.3.1",
+    "commander": "^14.0.3",
+    "ws": "^8.21.3",
+    "@clankergram/protocol": "workspace:*",
+    "@clankergram/adapters": "workspace:*",
+    "@clankergram/mcp": "workspace:*",
+    "@clankergram/analysis": "workspace:*",
+    "tsx": "^4.23.13"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.18.1",
+    "@clankergram/simulator": "workspace:*"
+  },
+  "bin": {
+    "clankergram": "./bin/clankergram.mjs"
+  }
+}
