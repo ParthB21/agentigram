@@ -1,6 +1,7 @@
 'use client';
 
 import type { PayloadType } from '@clankergram/protocol';
+import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import { activeCollision, agents, demoEvents, describeEvent } from '../lib/demo-data';
 import { useRoomStream } from '../lib/use-room-stream';
@@ -63,9 +64,9 @@ export function RoomView({ teamId }: { teamId: string }) {
           </div>
           <span className="role-avatar payments">P</span>
         </div>
-        <a className="text-action" href={`/team/${teamId}/collisions`}>
+        <Link className="text-action" href={`/team/${teamId}/collisions`}>
           Review collision
-        </a>
+        </Link>
       </section>
 
       <div className="room-grid">

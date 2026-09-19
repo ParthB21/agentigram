@@ -7,6 +7,7 @@ import { submitHumanAction } from '../lib/human-actions';
 
 const tiers = ['FILE', 'PREDICTED', 'SEMANTIC', 'CONFIRMED'];
 const steps = ['Open', 'Proposed', 'Accepted', 'Compiled', 'Verified'];
+const personasEndpoint = process.env.NEXT_PUBLIC_PERSONAS_ENDPOINT ?? '/api/personas';
 const PersonaResponseSchema = z.object({
   lines: z.array(z.object({ speaker: z.string(), text: z.string(), seq: z.number() })),
 });
@@ -29,8 +30,10 @@ export function CollisionView({ teamId }: { teamId: string }) {
   const [personaLines, setPersonaLines] = useState(fallbackLines);
 
   useEffect(() => {
+    if (!personasEndpoint) return;
+
     const controller = new AbortController();
-    void fetch('/api/personas', {
+    void fetch(personasEndpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({

@@ -1,6 +1,12 @@
 import type { ReactNode } from 'react';
 import { DashboardShell } from '../../../components/DashboardShell';
 
+const deployedTeamId = 'hackathon';
+
+export function generateStaticParams() {
+  return [{ teamId: deployedTeamId }];
+}
+
 export default async function TeamLayout({
   children,
   params,

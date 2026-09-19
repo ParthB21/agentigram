@@ -9,6 +9,7 @@
       "!openagents-develop",
       "!**/.next",
       "!**/dist",
+      "!**/out",
       "!**/next-env.d.ts",
       "!pnpm-lock.yaml"
     ]
