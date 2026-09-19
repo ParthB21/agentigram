@@ -1,17 +1,45 @@
 # @clankergram/web
 
-**Owner:** Part 4
+The Part 4 control room: live agent status, deterministic timeline replay, collision evidence,
+negotiation, contract ledger, model statistics, prediction league and presenter mode.
 
-Next.js dashboard. At M0 it is a shell: `/team/[teamId]` connects to the coordinator as a
-`dashboard` client and prints the raw event stream.
+## Run locally
 
-- Next.js 16.3.5 (App Router), React 19.3, checked 2026-09-19.
-- Coordinator URL: `NEXT_PUBLIC_COORDINATOR_URL` (default `ws://localhost:8787`); see `.env.example`.
-- Every frame is parsed with `ServerMessageSchema` before use; malformed frames are dropped.
+From the repository root, install the pinned workspace toolchain once:
 
 ```bash
-pnpm sim                                  # mock coordinator + scenario, in another terminal
-pnpm --filter @clankergram/web dev        # http://localhost:3000/team/hackathon
+corepack enable
+corepack prepare pnpm@10.34.5 --activate
+pnpm install
 ```
 
-See `CLAUDE.md` (repo layout, hard rules) and `spec.md` (source of truth).
+Then start the simulator and dashboard in separate terminals:
+
+```bash
+pnpm sim --scenario user-id-uuid --speed 4
+pnpm --filter @clankergram/web dev
+```
+
+Open <http://localhost:3000/team/hackathon>. The simulator uses
+`ws://localhost:8787` by default. Set `NEXT_PUBLIC_COORDINATOR_URL` to point at another coordinator.
+When the coordinator is unavailable, the interface displays explicitly labelled rehearsal data.
+Persona dialogue uses deterministic templates by default. To enable batched AI rendering for notable
+events, copy `.env.example` to `.env.local` and set `AI_GATEWAY_API_KEY`; `PERSONA_MODEL` is optional.
+
+## Views
+
+- `/team/hackathon` — live room and filtered event feed
+- `/team/hackathon/timeline` — reducer-backed sequence replay at 4×
+- `/team/hackathon/collisions` — evidence ladder, negotiation and human actions
+- `/team/hackathon/contracts` — versioned contract checks
+- `/team/hackathon/models` — posterior intervals, duels and model router
+- `/team/hackathon/league` — LMSR markets, trade preview and leaderboards
+- `/team/hackathon/present` — large-format demo view
+
+## Verify
+
+```bash
+pnpm --filter @clankergram/web test
+pnpm --filter @clankergram/web typecheck
+pnpm --filter @clankergram/web build
+```

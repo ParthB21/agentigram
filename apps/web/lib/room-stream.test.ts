@@ -22,7 +22,7 @@ describe('room stream', () => {
   });
 
   it('appends events in order and ignores already-seen seqs', () => {
-    let s = applyFrame(initialStream, frame([event(2), event(1)]));
+    let s = applyFrame(initialStream('r'), frame([event(2), event(1)]));
     expect(s.events.map((e) => e.seq)).toEqual([1, 2]);
     s = applyFrame(s, frame([event(2), event(3)]));
     expect(s.events.map((e) => e.seq)).toEqual([1, 2, 3]);
@@ -31,7 +31,7 @@ describe('room stream', () => {
   });
 
   it('drops malformed frames without losing state', () => {
-    const s = applyFrame(initialStream, frame([event(1)]));
+    const s = applyFrame(initialStream('r'), frame([event(1)]));
     expect(applyFrame(s, 'not json').events).toHaveLength(1);
     expect(applyFrame(s, JSON.stringify({ type: 'EVENTS', events: [{ seq: 'x' }] })).error).toMatch(
       /invalid/,
@@ -40,7 +40,7 @@ describe('room stream', () => {
 
   it('goes live on WELCOME and surfaces server errors', () => {
     const w = applyFrame(
-      initialStream,
+      initialStream('r'),
       JSON.stringify({ type: 'WELCOME', roomState: emptyRoomState('r'), fromSeq: 0 }),
     );
     expect(w.status).toBe('live');
@@ -51,7 +51,7 @@ describe('room stream', () => {
 
   it('bounds memory', () => {
     const s = applyFrame(
-      initialStream,
+      initialStream('r'),
       frame(Array.from({ length: MAX_EVENTS + 20 }, (_, i) => event(i + 1))),
     );
     expect(s.events).toHaveLength(MAX_EVENTS);
