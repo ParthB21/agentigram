@@ -4,139 +4,80 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+      content="default-src 'self'; style-src 'self'; img-src 'self' data:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Clankergram</title>
     <link rel="icon" href="favicon.svg" />
     <link rel="stylesheet" href="styles.css" />
-    <script src="renderer.js" defer></script>
   </head>
   <body>
-    <div class="app-shell">
-      <aside class="sidebar">
-        <header class="brand">
-          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
-          <div><strong>Clankergram</strong><small>hackathon</small></div>
-          <button type="button" class="icon-button" aria-label="Team options">•••</button>
-        </header>
+    <main class="window">
+      <header class="titlebar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+          <span><strong>Clankergram</strong><small>hackathon</small></span>
+        </div>
+        <span class="connection"><i class="status-dot"></i>Local daemon</span>
+      </header>
 
-        <nav aria-label="Workspace">
-          <button type="button" class="nav-item is-active" data-panel="workspace">
-            <span class="nav-icon">⌘</span><span>Workspace</span><kbd>4</kbd>
-          </button>
-          <button type="button" class="nav-item" data-panel="collisions">
-            <span class="nav-icon collision-icon">⌁</span><span>Collisions</span><kbd>1</kbd>
-          </button>
-          <button type="button" class="nav-item" data-panel="contracts">
-            <span class="nav-icon">✓</span><span>Contracts</span>
-          </button>
-        </nav>
-
-        <section class="session-list" aria-labelledby="sessions-title">
-          <div class="section-heading"><h2 id="sessions-title">Live agents</h2><span>3 online</span></div>
-          <button type="button" class="session is-selected">
-            <span class="avatar avatar-blue">B</span>
-            <span class="session-copy"><strong>Backend</strong><small>Editing user.ts</small></span>
-            <span class="pulse"></span>
-          </button>
-          <button type="button" class="session">
-            <span class="avatar avatar-violet">P</span>
-            <span class="session-copy"><strong>Payments</strong><small>Reading checkout.ts</small></span>
-            <span class="pulse"></span>
-          </button>
-          <button type="button" class="session">
-            <span class="avatar avatar-slate">F</span>
-            <span class="session-copy"><strong>Frontend</strong><small>Running tests</small></span>
-            <span class="pulse"></span>
-          </button>
-          <button type="button" class="session is-idle">
-            <span class="avatar avatar-amber">S</span>
-            <span class="session-copy"><strong>Security</strong><small>Idle 8 min</small></span>
-            <span class="idle-dot"></span>
-          </button>
-        </section>
-
-        <footer class="connection"><span class="connection-dot"></span><span>Local daemon</span><strong>Connected</strong></footer>
-      </aside>
-
-      <main class="workspace">
-        <header class="topbar">
-          <div><p>Saturday, 19 September</p><h1>Four agents, one codebase.</h1></div>
-          <div class="top-actions">
-            <button type="button" class="quiet-button">Replay</button>
-            <button type="button" class="primary-button"><span>+</span> Add agent</button>
-          </div>
-        </header>
-
-        <section class="status-strip" aria-label="Team status">
-          <div><span class="status-number">3</span><p>active agents</p></div>
-          <div><span class="status-number warning">1</span><p>collision needs attention</p></div>
-          <div class="clear-status"><span class="check">✓</span><p><strong>Contracts clear</strong><small>Last verified 42s ago</small></p></div>
-        </section>
-
-        <section class="collision-card">
-          <div class="collision-lead">
-            <div class="signal"><span></span><span></span><span></span></div>
+      <div class="content">
+        <section class="conversation" aria-labelledby="conversation-title">
+          <div class="heading">
             <div>
-              <p class="natural-label">Possible breaking change</p>
-              <h2>Backend is changing an interface Payments already read.</h2>
+              <p class="eyebrow">Workspace · feature/user-uuid</p>
+              <h1 id="conversation-title">Agents are coordinating</h1>
+              <span class="heading-summary">One possible collision needs a decision.</span>
             </div>
-            <span class="severity">Predicted · 86%</span>
+            <div class="agent-stack" role="img" aria-label="Four agents online">
+              <span class="avatar-small backend">B</span><span class="avatar-small payments">P</span><span class="avatar-small frontend">F</span><span class="avatar-small security">S</span>
+            </div>
           </div>
-          <div class="collision-path">
-            <div class="path-agent"><span class="avatar avatar-blue">B</span><p><strong>Backend</strong><small>User.id → UUID</small></p></div>
-            <div class="symbol-track"><span></span><code>src/types/user.ts#User.id</code><span></span></div>
-            <div class="path-agent"><span class="avatar avatar-violet">P</span><p><strong>Payments</strong><small>Read 3 min ago</small></p></div>
+
+          <div class="messages">
+            <article class="message">
+              <span class="identity backend">B</span>
+              <div>
+                <p><strong>Backend</strong><time>14:31</time></p>
+                <span class="message-copy">I’m changing <code>User.id</code> from a number to a UUID.</span>
+              </div>
+            </article>
+            <article class="message response">
+              <span class="identity payments">P</span>
+              <div>
+                <p><strong>Payments</strong><time>14:32</time></p>
+                <span class="message-copy">Checkout reads that field. I’ll hold my next write until we agree on the contract.</span>
+              </div>
+            </article>
           </div>
-          <div class="collision-actions">
-            <p>Payments will be asked to coordinate before its next write.</p>
-            <button type="button" class="quiet-button" id="inspect-button">Inspect collision</button>
-          </div>
+
+          <article class="collision">
+            <span class="collision-icon" aria-hidden="true">⌁</span>
+            <div>
+              <p><strong>Possible breaking change</strong><span class="confidence">Predicted · 86%</span></p>
+              <code>src/types/user.ts#User.id</code>
+            </div>
+            <button type="button">Review</button>
+          </article>
         </section>
 
-        <section class="activity">
-          <div class="activity-header">
-            <div><h2>Activity</h2><p>Observed locally from hooks and the filesystem</p></div>
-            <fieldset class="segmented">
-              <legend>Activity filter</legend>
-              <button type="button" class="is-active">All</button><button type="button">Changes</button><button type="button">Messages</button>
-            </fieldset>
+        <section class="activity" aria-labelledby="activity-title">
+          <div class="section-title">
+            <h2 id="activity-title">Recent activity</h2>
+            <span class="observed">Observed locally</span>
           </div>
-          <ol class="timeline">
-            <li>
-              <time>14:31:08</time><span class="timeline-dot dot-blue"></span>
-              <div><p><strong>Backend</strong> announced an interface change</p><code>User.id: number → string</code></div>
-            </li>
-            <li>
-              <time>14:30:54</time><span class="timeline-dot dot-violet"></span>
-              <div><p><strong>Payments</strong> read <code>src/checkout.ts</code></p><small>2 symbols added to its read set</small></div>
-            </li>
-            <li>
-              <time>14:30:21</time><span class="timeline-dot dot-slate"></span>
-              <div><p><strong>Frontend</strong> finished a test run</p><small>48 passing · 1.8s</small></div>
-            </li>
-            <li>
-              <time>14:29:46</time><span class="timeline-dot dot-green"></span>
-              <div><p><strong>All contracts verified</strong></p><small>Coordinator sequence 2,481</small></div>
-            </li>
+          <ol>
+            <li><time>14:31</time><i class="blue"></i><p><strong>Backend</strong> announced an interface change</p></li>
+            <li><time>14:30</time><i class="violet"></i><p><strong>Payments</strong> read <code>checkout.ts</code></p></li>
+            <li><time>14:29</time><i class="green"></i><p>All contracts verified</p></li>
           </ol>
         </section>
-      </main>
+      </div>
 
-      <aside class="inspector" id="inspector" aria-label="Session inspector">
-        <header><p class="inspector-label">Selected agent</p><button type="button" class="icon-button" aria-label="Close inspector" id="close-inspector">×</button></header>
-        <div class="agent-identity"><span class="avatar avatar-blue large">B</span><div><h2>Backend</h2><p>Claude Opus 5</p></div><span class="live-pill">Live</span></div>
-        <dl class="details">
-          <div><dt>Branch</dt><dd>feature/user-uuid</dd></div>
-          <div><dt>Session</dt><dd>8f12…a4c9</dd></div>
-          <div><dt>Started</dt><dd>24 minutes ago</dd></div>
-        </dl>
-        <section class="current-task"><p>Current intent</p><h3>Migrate user identifiers to UUIDs</h3><div><span>user.ts</span><span>auth.ts</span><span>3 symbols</span></div></section>
-        <section class="inspector-section"><div><h3>Lease</h3><span class="live-pill">9:14 left</span></div><code>User.id</code><code>createUser</code></section>
-        <section class="inspector-section"><div><h3>Recent reads</h3><span>12 files</span></div><p>src/types/user.ts <small>now</small></p><p>src/auth/session.ts <small>2m</small></p><p>src/api/users.ts <small>4m</small></p></section>
-        <button type="button" class="message-button">Message Backend</button>
-      </aside>
-    </div>
+      <footer>
+        <span><i class="status-dot"></i>4 agents online</span>
+        <span>Connected</span>
+      </footer>
+    </main>
   </body>
 </html>
