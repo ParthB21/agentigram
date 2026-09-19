@@ -20,6 +20,8 @@ const cmd = command(
   flag('--socket <path>', 'Agentigram daemon socket (default: $AGENTIGRAM_SOCKET)'),
   flag('--storage <dir>', 'custom storage directory'),
   flag('--model <name>', 'QVAC model constant to load'),
+  flag('--model-src <path>', 'load weights from this path/URL instead of the QVAC registry'),
+  flag('--fallback-src <url>', 'fall back to this URL if the QVAC registry is unreachable'),
   flag('--ctx <tokens>', 'context window in tokens (default 8192)'),
   flag('--verbose', 'log engine and native addon detail to stderr')
 )
@@ -49,7 +51,13 @@ const model = cmd.flags.model || pkg.qvac.model
 const ctxSize = Number(cmd.flags.ctx) || pkg.qvac.ctxSize
 const verbose = cmd.flags.verbose === true
 
-const inference = new Inference({ model, ctxSize, verbose })
+const inference = new Inference({
+  model,
+  modelSrc: cmd.flags.modelSrc,
+  fallbackSrc: cmd.flags.fallbackSrc,
+  ctxSize,
+  verbose
+})
 const room = new Room({ socket })
 
 const ui = new UI({ inference, room, model, version: pkg.version })

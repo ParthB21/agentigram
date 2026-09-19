@@ -19,10 +19,14 @@ const PearRuntime = require('pear-runtime')
 const ReadyResource = require('ready-resource')
 
 module.exports = class Inference extends ReadyResource {
-  constructor({ model, ctxSize, gracePeriod, verbose } = {}) {
+  constructor({ model, modelSrc, fallbackSrc, ctxSize, gracePeriod, verbose } = {}) {
     super()
 
     this.model = model || 'LLAMA_3_2_1B_INST_Q4_0'
+    // Escape hatches for a network that blocks QVAC's peer-to-peer registry:
+    // `modelSrc` replaces it with a path or URL, `fallbackSrc` backs it up.
+    this.modelSrc = modelSrc || ''
+    this.fallbackSrc = fallbackSrc || ''
     this.ctxSize = ctxSize || 8192
     this.gracePeriod = gracePeriod ?? 5000
     this.verbose = verbose === true
@@ -46,7 +50,9 @@ module.exports = class Inference extends ReadyResource {
     this.IPC = PearRuntime.run(require.resolve('../workers/qvac.js'), [
       this.model,
       String(this.ctxSize),
-      this.verbose ? '1' : '0'
+      this.verbose ? '1' : '0',
+      this.modelSrc,
+      this.fallbackSrc
     ])
     this.pipe = new FramedStream(this.IPC)
 

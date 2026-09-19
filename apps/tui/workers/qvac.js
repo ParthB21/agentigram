@@ -47,6 +47,13 @@ const ctxSize = Number(argv(1)) || 8192
 // alt-screen, so this is a diagnostic mode, not something to leave on.
 const verbose = argv(2) === '1'
 
+// QVAC's registry is peer-to-peer and some networks block it. `modelSrc`
+// bypasses it entirely with a local path or URL; `fallbackSrc` keeps the
+// registry first and falls back. Empty string means "not set" — argv carries
+// no undefined.
+const modelSrcOverride = argv(3) || ''
+const fallbackSrc = argv(4) || ''
+
 const pipe = new FramedStream(Bare.IPC)
 const send = (msg) => pipe.write(JSON.stringify(msg))
 
@@ -234,13 +241,17 @@ async function boot() {
     }
   }
 
-  const modelSrc = sdk[modelName]
+  // A raw path or URL carries no engine, so the model type has to be stated;
+  // a registry descriptor already knows it.
+  const modelSrc = modelSrcOverride || sdk[modelName]
   if (!modelSrc) throw new Error(`Unknown model: ${modelName}`)
 
   log(`loading ${modelName} (ctx_size=${ctxSize}) from ${JSON.stringify(modelSrc)}`)
 
   modelId = await sdk.loadModel({
     modelSrc,
+    ...(modelSrcOverride && { modelType: 'llamacpp-completion' }),
+    ...(fallbackSrc && { fallbackSrc }),
     // verbosity is the addon's own native log level: 0=ERROR (default), 3=DEBUG.
     modelConfig: { ctx_size: ctxSize, ...(verbose && { verbosity: 3 }) },
     onProgress: ({ percentage }) => send({ t: 'progress', percentage })

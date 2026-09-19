@@ -1,6 +1,6 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, statSync } from 'node:fs';
+import { accessSync, chmodSync, constants, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -77,7 +77,19 @@ function verifyHost(value: InstallState['host']): void {
 function bareBinary(): string {
   try {
     const tuiRequire = createRequire(new URL('../../tui/package.json', import.meta.url));
-    return (tuiRequire('bare-runtime') as (referrer?: string) => string)();
+    const binary = (tuiRequire('bare-runtime') as (referrer?: string) => string)();
+    // The binary ships inside a platform package (bare-runtime-darwin-arm64 and
+    // friends) as a plain file rather than a declared `bin`, so npm leaves it
+    // non-executable when it lands as a nested dependency. Windows does not
+    // care; macOS and Linux fail the spawn with EACCES.
+    if (process.platform !== 'win32') {
+      try {
+        accessSync(binary, constants.X_OK);
+      } catch {
+        chmodSync(binary, statSync(binary).mode | 0o111);
+      }
+    }
+    return binary;
   } catch {
     return 'bare';
   }
