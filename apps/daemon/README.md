@@ -36,8 +36,21 @@ Checked against official documentation on 2026-09-19:
   a preload boundary, CSP, and the standard macOS application lifecycle.
 - `@parcel/watcher` 2.6.0 for native recursive worktree observation.
 
-The hook payload fixtures are secret-free representations of the documented current shapes. Part 3
-still owns `analysis.apiDelta` and `analysis.readSetFromFiles`; until those functions land, the daemon
-continues emitting filesystem events and omits symbol enrichment rather than guessing.
+The hook payload fixtures are secret-free representations of the documented current shapes, not
+payloads captured from a live Claude Code session (capturing real ones is still open).
+
+## Integration with Parts 1 and 3
+
+- **Symbols:** `SymbolReader` (`src/symbol-reader.ts`) keeps one `@clankergram/analysis` `Indexer` per
+  repo and turns a Read into symbol keys. The index is warmed at `SessionStart`, so a hook never pays for
+  a cold TypeScript program; a repo with no `tsconfig.json` degrades to FILE_READ without symbols.
+- **`apiDelta`** is still Part 3's M2 stub; the watcher logs it as unavailable and emits no `API_DELTA`.
+- **Coordinator auth:** `join --token <secret>` (or `CLANKERGRAM_TOKEN`) is the room secret the Part 1
+  coordinator checks at HELLO. Without it the token is the team code, which only the simulator accepts.
+- **Heartbeats** are events stamped `source: system`; the coordinator accepts that for `HEARTBEAT` only.
+- **Platforms:** macOS and Linux use a Unix socket at `~/.clankergram/<repo-hash>.sock`; Windows uses a
+  named pipe (`clankergram-<repo-hash>`), since Node cannot listen on a `.sock` file there.
+- **Hook timeouts** in `.claude/settings.local.json` are whole seconds (the docs list integers); the
+  300 ms PreToolUse budget is enforced by the hook process's own IPC timeout.
 
 See `CLAUDE.md` (repo layout, hard rules) and `spec.md` (source of truth).

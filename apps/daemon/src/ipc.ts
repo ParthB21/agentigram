@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { ClaudeHookInputSchema } from '@clankergram/adapters';
 import { MCP_TOOL_NAMES } from '@clankergram/protocol';
 import { z } from 'zod';
+import { isPipe } from './runtime.js';
 
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
 export const PRE_TOOL_TIMEOUT_MS = 300;
@@ -44,8 +45,10 @@ export function createIpcServer(
   socketPath: string,
   handle: (request: IpcRequest) => Promise<IpcResponse>,
 ): Server {
-  rmSync(socketPath, { force: true });
-  mkdirSync(dirname(socketPath), { recursive: true });
+  if (!isPipe(socketPath)) {
+    rmSync(socketPath, { force: true });
+    mkdirSync(dirname(socketPath), { recursive: true });
+  }
   return createServer((socket) => {
     collect(socket, async (raw) => {
       try {

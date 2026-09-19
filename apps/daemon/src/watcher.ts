@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { relative } from 'node:path';
+import { relative, sep } from 'node:path';
 import { apiDelta } from '@clankergram/analysis';
 import type { NewEvent } from '@clankergram/protocol';
 import { type AsyncSubscription, subscribe } from '@parcel/watcher';
@@ -12,6 +12,7 @@ export type WatcherOptions = {
   sessionId: string;
   root: string;
   submit(event: NewEvent): void;
+  onChange?(relativePaths: string[]): void;
   isRecentAgentWrite(path: string): boolean;
   log(message: string, error?: unknown): void;
 };
@@ -62,8 +63,9 @@ export class WorktreeWatcher {
   private async flush(): Promise<void> {
     const paths = [...this.changed];
     this.changed.clear();
-    for (const path of paths) {
-      const relativePath = relative(this.options.root, path);
+    const relativePaths = paths.map((p) => relative(this.options.root, p).split(sep).join('/'));
+    this.options.onChange?.(relativePaths);
+    for (const relativePath of relativePaths) {
       const agentWrite = this.options.isRecentAgentWrite(relativePath);
       this.options.submit({
         id: crypto.randomUUID(),

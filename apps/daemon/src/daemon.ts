@@ -1,14 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { ClaudeCodeAdapter, type ClaudeHookInput } from '@clankergram/adapters';
-import { readSetFromFiles } from '@clankergram/analysis';
 import { parseToolCall } from '@clankergram/mcp';
-import type { NewEvent, SymbolKey } from '@clankergram/protocol';
+import type { NewEvent } from '@clankergram/protocol';
 import pino from 'pino';
 import { CursorStore } from './cursor-store.js';
 import type { InstallState } from './install.js';
 import { createIpcServer, type IpcRequest, type IpcResponse } from './ipc.js';
 import { RoomClient } from './room-client.js';
+import { SymbolReader } from './symbol-reader.js';
 import { WorktreeWatcher } from './watcher.js';
 
 const SESSION_HEARTBEAT_MS = 10_000;
@@ -30,17 +30,20 @@ export class LaptopDaemon {
   private readonly sessions = new Set<string>();
   private readonly watchers = new Map<string, WorktreeWatcher>();
   private readonly recentAgentWrites = new Map<string, number>();
-  private readonly adapter = new ClaudeCodeAdapter(async (paths) => this.readSymbols(paths));
+  private readonly symbols: SymbolReader;
+  private readonly adapter: ClaudeCodeAdapter;
   private readonly client: RoomClient;
   private readonly server;
   private heartbeat: NodeJS.Timeout | undefined;
 
   constructor(private readonly state: InstallState) {
+    this.symbols = new SymbolReader(state.root, this.log);
+    this.adapter = new ClaudeCodeAdapter(async (paths, cwd) => this.symbols.read(paths, cwd));
     this.client = new RoomClient({
       url: state.coordinator,
       roomId: state.roomId,
       client: 'daemon',
-      token: state.teamCode,
+      token: state.token ?? state.teamCode,
       cursor: CursorStore.forRoom(state.roomId),
       log: this.log,
       onEvents: (events) =>
@@ -80,6 +83,7 @@ export class LaptopDaemon {
     const sessionId = input.session_id;
     if (input.hook_event_name === 'SessionStart') {
       this.sessions.add(sessionId);
+      this.symbols.warm();
       await this.ensureWatcher(sessionId, input.cwd);
     }
     const events = await this.adapter.normalize(input, {
@@ -93,6 +97,7 @@ export class LaptopDaemon {
     for (const event of events) {
       if (event.payload.type === 'FILE_WRITE') {
         this.recordAgentWrite(event.payload.path);
+        this.symbols.markDirty([event.payload.path]);
       }
       this.submit(event);
     }
@@ -199,14 +204,6 @@ export class LaptopDaemon {
     this.recentAgentWrites.set(path, now);
   }
 
-  private async readSymbols(paths: string[]): Promise<SymbolKey[]> {
-    try {
-      return Object.keys((await readSetFromFiles(paths)).symbols) as SymbolKey[];
-    } catch {
-      return [];
-    }
-  }
-
   private async ensureWatcher(sessionId: string, root: string): Promise<void> {
     if (this.watchers.has(root)) return;
     const watcher = new WorktreeWatcher({
@@ -215,6 +212,7 @@ export class LaptopDaemon {
       sessionId,
       root,
       submit: (event) => this.submit(event),
+      onChange: (paths) => this.symbols.markDirty(paths),
       isRecentAgentWrite: (path) => {
         const writtenAt = this.recentAgentWrites.get(path);
         return writtenAt !== undefined && Date.now() - writtenAt <= AGENT_WRITE_MATCH_WINDOW_MS;

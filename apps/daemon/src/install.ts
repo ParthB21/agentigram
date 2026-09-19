@@ -28,6 +28,8 @@ export type InstallState = {
   root: string;
   roomId: string;
   teamCode: string;
+  /** HELLO token for the coordinator. Defaults to the team code (what the simulator accepts). */
+  token?: string;
   engineerId: string;
   coordinator: string;
   socketPath: string;
@@ -40,6 +42,7 @@ export type InstallState = {
 export type InstallOptions = {
   root: string;
   teamCode: string;
+  token?: string;
   coordinator?: string;
   engineerId?: string;
   runtimeBase?: string;
@@ -79,7 +82,7 @@ function mergeSettings(root: string, socketPath: string): string {
   for (const [event, matcher, timeout] of [
     ['SessionStart', undefined, 1],
     ['UserPromptSubmit', undefined, 1],
-    ['PreToolUse', 'Edit|Write|MultiEdit|Bash', 0.3],
+    ['PreToolUse', 'Edit|Write|MultiEdit|Bash', 1],
     ['PostToolUse', 'Read|Grep|Glob|Edit|Write|MultiEdit|Bash', 1],
     ['Stop', undefined, 1],
     ['SessionEnd', undefined, 1],
@@ -160,6 +163,7 @@ export function install(options: InstallOptions): InstallState {
     root,
     roomId: options.teamCode,
     teamCode: options.teamCode,
+    ...(options.token ? { token: options.token } : {}),
     engineerId: options.engineerId ?? userInfo().username,
     coordinator: options.coordinator ?? DEFAULT_COORDINATOR,
     socketPath: paths.socket,

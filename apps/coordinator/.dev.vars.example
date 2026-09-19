@@ -1,0 +1,5 @@
+# Copy to .dev.vars (gitignored). Production values: `wrangler secret put ROOM_SECRET` etc.
+# HELLO token clients must present (stub auth until M3 replaces it with Supabase JWTs).
+ROOM_SECRET=dev-room-secret
+# Bearer token for POST /room/:roomId/ingest (specmerge, github workers).
+WORKER_SECRET=dev-worker-secret

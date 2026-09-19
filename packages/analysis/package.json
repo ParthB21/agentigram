@@ -15,6 +15,10 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@clankergram/protocol": "workspace:*"
+    "@clankergram/protocol": "workspace:*",
+    "typescript": "~5.9.3"
+  },
+  "devDependencies": {
+    "@clankergram/simulator": "workspace:*"
   }
 }

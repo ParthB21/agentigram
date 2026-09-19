@@ -37,26 +37,36 @@ export function buildProgram(): Command {
     .option('--root <path>', 'repository root', process.cwd())
     .option('--coordinator <url>', 'coordinator URL', 'ws://localhost:8787')
     .option('--engineer <id>', 'engineer identifier')
-    .action((teamCode: string, opts: { root: string; coordinator: string; engineer?: string }) => {
-      const detected = spawnSync('claude', ['--version'], { stdio: 'ignore' });
-      if (detected.error || detected.status !== 0) {
-        throw new Error('Claude Code was not found on PATH; install it before joining');
-      }
-      const state = install({
-        root: opts.root,
-        teamCode,
-        coordinator: opts.coordinator,
-        engineerId: opts.engineer,
-      });
-      const child = spawn(process.execPath, [executable, 'daemon', '--root', state.root], {
-        detached: true,
-        stdio: 'ignore',
-      });
-      child.unref();
-      state.pid = child.pid;
-      writeInstallState(state);
-      console.log(`Joined ${teamCode}. Daemon starting at ${state.socketPath}`);
-    });
+    .option(
+      '--token <secret>',
+      'coordinator room secret (or CLANKERGRAM_TOKEN); default: the team code',
+    )
+    .action(
+      (
+        teamCode: string,
+        opts: { root: string; coordinator: string; engineer?: string; token?: string },
+      ) => {
+        const detected = spawnSync('claude', ['--version'], { stdio: 'ignore' });
+        if (detected.error || detected.status !== 0) {
+          throw new Error('Claude Code was not found on PATH; install it before joining');
+        }
+        const state = install({
+          root: opts.root,
+          teamCode,
+          coordinator: opts.coordinator,
+          engineerId: opts.engineer,
+          token: opts.token ?? process.env.CLANKERGRAM_TOKEN,
+        });
+        const child = spawn(process.execPath, [executable, 'daemon', '--root', state.root], {
+          detached: true,
+          stdio: 'ignore',
+        });
+        child.unref();
+        state.pid = child.pid;
+        writeInstallState(state);
+        console.log(`Joined ${teamCode}. Daemon starting at ${state.socketPath}`);
+      },
+    );
 
   program
     .command('leave')

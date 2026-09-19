@@ -1,4 +1,4 @@
-import { relative, resolve } from 'node:path';
+import { relative, resolve, sep } from 'node:path';
 import type { NewEvent, SymbolKey } from '@clankergram/protocol';
 import { z } from 'zod';
 import { redactSecrets } from './redact.js';
@@ -31,7 +31,7 @@ export const ClaudeHookInputSchema = z
   .passthrough();
 
 export type ClaudeHookInput = z.infer<typeof ClaudeHookInputSchema>;
-export type ReadSymbols = (paths: string[]) => Promise<SymbolKey[]>;
+export type ReadSymbols = (paths: string[], cwd?: string) => Promise<SymbolKey[]>;
 
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob']);
 const WRITE_TOOLS = new Set(['Edit', 'Write', 'MultiEdit']);
@@ -41,7 +41,8 @@ function repoPath(cwd: string, input: unknown): string | undefined {
   if (typeof input !== 'string' || input.length === 0) return undefined;
   const absolute = resolve(cwd, input);
   const path = relative(cwd, absolute);
-  return path.startsWith('..') ? absolute : path || '.';
+  // Protocol paths are always POSIX, whatever the host OS.
+  return (path.startsWith('..') ? absolute : path || '.').split(sep).join('/');
 }
 
 function inputPaths(input: ClaudeHookInput): string[] {
@@ -117,7 +118,7 @@ export class ClaudeCodeAdapter implements AgentAdapter {
         const tool = input.tool_name ?? 'unknown';
         const paths = inputPaths(input);
         if (READ_TOOLS.has(tool)) {
-          const symbols = await this.readSymbols(paths);
+          const symbols = await this.readSymbols(paths, input.cwd);
           return paths.map((path) => ({
             ...base(),
             payload: { type: 'FILE_READ' as const, path, ...(symbols.length ? { symbols } : {}) },

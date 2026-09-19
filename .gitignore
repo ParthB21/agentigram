@@ -12,3 +12,6 @@ coverage
 
 # Read-only OpenAgents reference checkout
 openagents-develop/
+
+# demo-repo incremental typecheck cache
+.cache

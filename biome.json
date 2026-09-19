@@ -8,6 +8,8 @@
       "**",
       "!openagents-develop",
       "!**/.next",
+      "!**/.wrangler",
+      "!**/fixtures",
       "!**/dist",
       "!**/next-env.d.ts",
       "!pnpm-lock.yaml"
