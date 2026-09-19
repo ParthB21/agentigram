@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildProgram } from './cli.js';
+import { buildProgram, resolveRepositoryRoot } from './cli.js';
 import { summarise } from './summary.js';
 
 describe('agentigram CLI', () => {
@@ -33,6 +33,16 @@ describe('agentigram CLI', () => {
     expect(command?.options.map((option) => option.long)).toEqual(
       expect.arrayContaining(['--root', '--session', '--host', '--engineer']),
     );
+  });
+
+  it('resolves repository roots from the original invocation directory', () => {
+    const program = buildProgram('/tmp/agentigram-worktree');
+    const create = program.commands.find((candidate) => candidate.name() === 'create');
+    const ui = program.commands.find((candidate) => candidate.name() === 'ui');
+
+    expect(create?.getOptionValue('root')).toBe('/tmp/agentigram-worktree');
+    expect(ui?.getOptionValue('root')).toBe('/tmp/agentigram-worktree');
+    expect(resolveRepositoryRoot('.', '/tmp/agentigram-worktree')).toBe('/tmp/agentigram-worktree');
   });
 
   it('summarises events on one line', () => {

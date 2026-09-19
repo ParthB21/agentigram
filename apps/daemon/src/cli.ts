@@ -25,6 +25,10 @@ const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.ur
 const DAEMON_START_TIMEOUT_MS = 15_000;
 const DAEMON_POLL_MS = 100;
 
+export function resolveRepositoryRoot(root: string, invocationDirectory: string): string {
+  return resolve(invocationDirectory, root);
+}
+
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return '';
   const chunks: Buffer[] = [];
@@ -98,7 +102,9 @@ async function waitForDaemon(state: InstallState): Promise<Record<string, unknow
   );
 }
 
-export function buildProgram(): Command {
+export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? process.cwd()): Command {
+  const defaultRoot = resolve(invocationDirectory);
+  const resolveRoot = (root: string) => resolveRepositoryRoot(root, defaultRoot);
   const program = new Command('agentigram')
     .description('Agentigram: autonomous coding-agent coordination across laptops.')
     .version('0.2.0');
@@ -106,7 +112,7 @@ export function buildProgram(): Command {
   program
     .command('create')
     .description('Create a P2P room on this authority laptop.')
-    .option('--root <path>', 'repository root', process.cwd())
+    .option('--root <path>', 'repository root', defaultRoot)
     .option('--room <id>', 'room identifier', 'hackathon')
     .requiredOption('--session <id>', 'local agent session name')
     .option('--host <host>', 'claude or codex', 'claude')
@@ -119,7 +125,7 @@ export function buildProgram(): Command {
         host: string;
         engineer?: string;
       }) => {
-        const root = resolve(options.root);
+        const root = resolveRoot(options.root);
         const selectedHost = host(options.host);
         verifyHost(selectedHost);
         const state = install({
@@ -144,7 +150,7 @@ export function buildProgram(): Command {
   program
     .command('join <invite>')
     .description('Join a P2P room from another laptop.')
-    .option('--root <path>', 'repository root', process.cwd())
+    .option('--root <path>', 'repository root', defaultRoot)
     .requiredOption('--session <id>', 'local agent session name')
     .option('--host <host>', 'claude or codex', 'codex')
     .option('--engineer <id>', 'engineer identifier')
@@ -153,7 +159,7 @@ export function buildProgram(): Command {
         inviteUri: string,
         options: { root: string; session: string; host: string; engineer?: string },
       ) => {
-        const root = resolve(options.root);
+        const root = resolveRoot(options.root);
         const invite = decodeInvite(inviteUri);
         const fingerprint = repositoryFingerprint(root);
         if (fingerprint !== invite.repositoryFingerprint) {
@@ -182,9 +188,9 @@ export function buildProgram(): Command {
   program
     .command('leave')
     .description('Stop Agentigram and restore local configuration exactly.')
-    .option('--root <path>', 'repository root', process.cwd())
+    .option('--root <path>', 'repository root', defaultRoot)
     .action((options: { root: string }) => {
-      const state = requiredState(resolve(options.root));
+      const state = requiredState(resolveRoot(options.root));
       if (state.pid) {
         try {
           process.kill(state.pid, 'SIGTERM');
@@ -199,9 +205,9 @@ export function buildProgram(): Command {
   program
     .command('daemon')
     .description('Run the local daemon in the foreground.')
-    .option('--root <path>', 'repository root', process.cwd())
+    .option('--root <path>', 'repository root', defaultRoot)
     .action(async (options: { root: string }) => {
-      const daemon = new LaptopDaemon(requiredState(resolve(options.root)));
+      const daemon = new LaptopDaemon(requiredState(resolveRoot(options.root)));
       await daemon.start();
       const stop = async () => {
         await daemon.stop();
@@ -218,7 +224,7 @@ export function buildProgram(): Command {
     .action(async (event: string, options: { root: string }) => {
       try {
         const input = JSON.parse(await readStdin()) as never;
-        const state = requiredState(resolve(options.root));
+        const state = requiredState(resolveRoot(options.root));
         const response = await requestIpc(
           state.socketPath,
           { type: 'hook', event, input },
@@ -236,19 +242,19 @@ export function buildProgram(): Command {
   program
     .command('mcp')
     .description('Run the MCP stdio shim that forwards to the local daemon.')
-    .option('--root <path>', 'repository root', process.cwd())
+    .option('--root <path>', 'repository root', defaultRoot)
     .option('--session <id>', 'agent session id')
     .action(async (options: { root: string; session?: string }) => {
-      const state = requiredState(resolve(options.root));
+      const state = requiredState(resolveRoot(options.root));
       await runMcpServer(state.socketPath, options.session ?? state.sessionId);
     });
 
   program
     .command('status')
     .description('Show installation, authority, and room status.')
-    .option('--root <path>', 'repository root', process.cwd())
+    .option('--root <path>', 'repository root', defaultRoot)
     .action(async (options: { root: string }) => {
-      const state = readInstallState(resolve(options.root));
+      const state = readInstallState(resolveRoot(options.root));
       if (!state) return void console.log('Not joined.');
       try {
         const output = await waitForDaemon(state);
@@ -263,14 +269,14 @@ export function buildProgram(): Command {
   program
     .command('ui')
     .description('Open the local macOS control window.')
-    .option('--root <path>', 'repository root', process.cwd())
+    .option('--root <path>', 'repository root', defaultRoot)
     .action(async (options: { root: string }) => {
       const electron = createRequire(import.meta.url)('electron') as string;
       const main = fileURLToPath(new URL('../ui/main.cjs', import.meta.url));
       const child = spawn(electron, [main], {
         detached: true,
         stdio: 'ignore',
-        env: { ...process.env, AGENTIGRAM_ROOT: resolve(options.root) },
+        env: { ...process.env, AGENTIGRAM_ROOT: resolveRoot(options.root) },
       });
       child.unref();
     });
