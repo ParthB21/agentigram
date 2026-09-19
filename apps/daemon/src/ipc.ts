@@ -38,38 +38,89 @@ const ToolRequestSchema = z.object({
   args: z.unknown(),
   sessionId: z.string().min(1),
 });
+/** Opens a long-lived stream of room frames instead of a single reply. Used by the Bare/Pear TUI. */
+const SubscribeRequestSchema = z.object({ type: z.literal('subscribe') });
+/**
+ * Dialogue rendered by the local QVAC model. `PERSONA_LINES` is dashboard-only (CLAUDE.md rule 5),
+ * so an on-device model's prose reaches the room view and never an agent's context.
+ */
+const NarrateRequestSchema = z.object({
+  type: z.literal('narrate'),
+  lines: z
+    .array(z.object({ speaker: z.string().min(1), text: z.string().min(1).max(2000) }))
+    .min(1)
+    .max(20),
+});
 export const IpcRequestSchema = z.discriminatedUnion('type', [
   HookRequestSchema,
   StatusRequestSchema,
   HumanRequestSchema,
   ToolRequestSchema,
+  SubscribeRequestSchema,
+  NarrateRequestSchema,
 ]);
 export type IpcRequest = z.infer<typeof IpcRequestSchema>;
 export type IpcResponse = { ok: true; output?: unknown } | { ok: false; error: string };
 
+/** A frame pushed down a subscribed socket. Newline-delimited JSON, same framing as requests. */
+export type IpcFrame =
+  | { t: 'state'; state: unknown }
+  | { t: 'event'; seq: number; eventType: string; sessionId?: string; text: string };
+
+/**
+ * Newline-delimited JSON. Consumes each complete line and keeps the remainder buffered, so a
+ * subscriber can keep the socket open for many frames and a request split across TCP chunks still
+ * parses.
+ */
 function collect(socket: Socket, onMessage: (raw: string) => void): void {
   let raw = '';
   socket.setEncoding('utf8');
   socket.on('data', (chunk) => {
     raw += chunk;
-    if (raw.length > MAX_REQUEST_BYTES) socket.destroy(new Error('IPC request too large'));
-    const newline = raw.indexOf('\n');
-    if (newline >= 0) onMessage(raw.slice(0, newline));
+    if (raw.length > MAX_REQUEST_BYTES) {
+      socket.destroy(new Error('IPC request too large'));
+      return;
+    }
+    let newline = raw.indexOf('\n');
+    while (newline >= 0) {
+      const line = raw.slice(0, newline);
+      raw = raw.slice(newline + 1);
+      if (line.trim()) onMessage(line);
+      newline = raw.indexOf('\n');
+    }
   });
 }
 
 export function createIpcServer(
   socketPath: string,
   handle: (request: IpcRequest) => Promise<IpcResponse>,
+  onSubscribe?: (send: (frame: IpcFrame) => void) => () => void,
 ): Server {
   if (!isPipe(socketPath)) {
     rmSync(socketPath, { force: true });
     mkdirSync(dirname(socketPath), { recursive: true });
   }
   return createServer((socket) => {
+    let unsubscribe: (() => void) | undefined;
+    const release = () => {
+      unsubscribe?.();
+      unsubscribe = undefined;
+    };
+    socket.on('close', release);
+    socket.on('error', release);
+
     collect(socket, async (raw) => {
       try {
         const request = IpcRequestSchema.parse(JSON.parse(raw));
+        if (request.type === 'subscribe') {
+          if (!onSubscribe) throw new Error('this daemon does not support subscriptions');
+          // Already streaming: a second subscribe on one socket would double every frame.
+          if (unsubscribe) return;
+          unsubscribe = onSubscribe((frame) => {
+            if (!socket.destroyed) socket.write(`${JSON.stringify(frame)}\n`);
+          });
+          return;
+        }
         socket.end(`${JSON.stringify(await handle(request))}\n`);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

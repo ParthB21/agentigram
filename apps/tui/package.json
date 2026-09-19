@@ -1,0 +1,56 @@
+{
+  "name": "agentigram-tui",
+  "productName": "agentigram",
+  "version": "0.1.0",
+  "description": "Agentigram: the sovereign room view. Bare + QVAC on-device negotiation over a Hyperswarm room, with OTA updates.",
+  "private": true,
+  "bin": "bin.mjs",
+  "upgrade": "pear://<YOUR_KEY_HERE>",
+  "scripts": {
+    "format": "prettier . --write",
+    "test": "node scripts/bare.mjs brittle/bin/bare.js test/index.js",
+    "lint": "prettier . --check && lunte",
+    "start": "node scripts/bare.mjs ../bin.mjs",
+    "warm": "node scripts/bare.mjs ../scripts/warm.js",
+    "make": "node scripts/make.js",
+    "make:darwin-arm64": "bare-build --name agentigram --standalone --host darwin-arm64 --out ./out/darwin-arm64 bin.mjs",
+    "make:darwin-x64": "bare-build --name agentigram --standalone --host darwin-x64 --out ./out/darwin-x64 bin.mjs",
+    "make:linux-arm64": "bare-build --name agentigram --standalone --host linux-arm64 --out ./out/linux-arm64 bin.mjs",
+    "make:linux-x64": "bare-build --name agentigram --standalone --host linux-x64 --out ./out/linux-x64 bin.mjs",
+    "make:win32-arm64": "bare-build --name agentigram --standalone --host win32-arm64 --out ./out/win32-arm64 bin.mjs",
+    "make:win32-x64": "bare-build --name agentigram --standalone --host win32-x64 --out ./out/win32-x64 bin.mjs"
+  },
+  "dependencies": {
+    "@qvac/inference": "^0.18.2",
+    "@qvac/langdetect-text": "^0.1.2",
+    "@qvac/llm-llamacpp": "^0.45.0",
+    "bare-fs": "^4.4.0",
+    "bare-os": "^3.9.0",
+    "bare-path": "^3.0.0",
+    "bare-pipe": "^4.1.0",
+    "bare-process": "^4.5.0",
+    "bare-storage": "^1.1.0",
+    "bare-tui": "^0.3.0",
+    "bare-tui-updater": "^0.0.1",
+    "framed-stream": "^1.0.1",
+    "hello-pear-worker": "^1.2.0",
+    "paparam": "^1.10.1",
+    "pear-runtime": "^1.2.0",
+    "ready-resource": "^1.2.0",
+    "which-runtime": "^1.4.0"
+  },
+  "devDependencies": {
+    "bare-build": "^1.0.2",
+    "bare-runtime": "^1.33.4",
+    "brittle": "^3.19.0",
+    "lunte": "^1.2.0",
+    "prettier": "^3.6.2",
+    "prettier-config-holepunch": "^2.0.0"
+  },
+  "author": "Agentigram",
+  "license": "Apache-2.0",
+  "qvac": {
+    "model": "LLAMA_3_2_1B_INST_Q4_0",
+    "ctxSize": 8192
+  }
+}

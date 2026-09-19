@@ -15,11 +15,31 @@ runs a play-money prediction league.
 
 ## Status
 
-The Half 1 vertical slice is implemented: clean Agentigram naming, encrypted P2P rooms, a
-single-writer replicated event history, authoritative leases and fencing, negotiation state,
-deterministic routing, Claude Code, Codex, and Gemini CLI hooks, MCP tools, and a live macOS control
-window.
+Working end to end across two laptops over real Hyperswarm P2P: encrypted rooms, a single-writer
+replicated event history, authoritative leases and fencing, Claude Code / Codex / Gemini CLI hooks,
+MCP tools, tier-0/1 collision detection, and a Bare/Pear terminal app that negotiates each collision
+with a model running on the laptop.
+
 The Durable Object/WebSocket coordinator remains available as an optional hosted transport.
+
+## The room view runs on Pear, and the model runs here
+
+`apps/tui` is a [Pear](https://docs.pears.com) app built on
+[`holepunchto/hello-pear-qvac-tui`](https://github.com/holepunchto/hello-pear-qvac-tui) — Bare,
+QVAC on-device inference, bare-tui, and peer-to-peer OTA updates. It shows every agent in the room,
+the collisions between them, and drafts the contract that resolves each one using
+`LLAMA_3_2_1B_INST_Q4_0` loaded on that machine. No API key, no network round-trip, nothing to
+switch off when the venue wifi dies.
+
+Detection never uses a model: the symbol index and read-set intersection decide *that* two agents
+collide. QVAC does the part set intersection cannot — writing the contract
+(`User.id: number → string (UUID v4)`, grammar-constrained so the JSON always parses) and putting it
+into a sentence. Every generated artefact has a deterministic fallback, so a laptop that never
+downloaded the weights still shows and negotiates every collision.
+
+A proposal is only sent when a human presses <kbd>enter</kbd>: it lands in a teammate's agent context
+on another machine, and a 1B model's output is not something to inject unreviewed.
+See [`apps/tui/README.md`](apps/tui/README.md).
 
 ## Quick start
 
@@ -30,7 +50,11 @@ npx pnpm@10.34.5 install
 npx pnpm@10.34.5 typecheck
 npx pnpm@10.34.5 test
 
-# One-laptop P2P smoke test
+# The Pear app installs with npm, not pnpm (bare-pack needs a real node_modules tree).
+# `warm` downloads ~0.8 GB of model weights once per machine — do this before the demo.
+cd apps/tui && npm install && npm run warm && npm test && cd ../..
+
+# One-laptop P2P smoke test: 4 peers, a lease denial and a tier-1 collision
 npx pnpm@10.34.5 agentigram demo --scenario user-id-uuid --peers 4
 
 # Authority laptop (prints an agentigram:// invite)
@@ -42,9 +66,15 @@ npx pnpm@10.34.5 agentigram join '<invite>' --root . --session payments --host c
 # Third laptop, using Gemini CLI (installs project hooks + Agentigram MCP automatically)
 npx pnpm@10.34.5 agentigram join '<invite>' --root . --session frontend --host gemini --engineer alex
 
-# Local transparent macOS window
+# The room view, with on-device negotiation (run this on every laptop)
+npx pnpm@10.34.5 agentigram tui --root .
+
+# Local transparent macOS window (the older Electron shell)
 npx pnpm@10.34.5 agentigram ui --root .
 ```
+
+Every laptop must be a clone of the same Git repository — the invite carries a fingerprint derived
+from `remote.origin.url`, and a clone with a different remote is refused.
 
 `pnpm sim` flags: `--scenario`, `--port` (8787), `--room` (`hackathon`), `--speed`, `--no-play`, `--list`.
 
@@ -58,7 +88,8 @@ npx pnpm@10.34.5 agentigram ui --root .
 | `packages/p2p` | 1 | Hyperswarm discovery, Protomux control channel, Corestore/Hypercore event replication, room invites. |
 | `packages/adapters` | 2 | Agent-host adapter registry, health tracking, secret redaction, peer-data wrapper. |
 | `packages/mcp` | 2 | MCP tool definitions and input validation, generated from protocol schemas. |
-| `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex/Gemini hooks, MCP, watcher, secure Electron bridge. |
+| `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex/Gemini hooks, MCP, watcher, tier-0/1 collision detection (`collide.ts`), secure Electron bridge. |
+| `apps/tui` | Half 1 | **Bare/Pear room view.** QVAC on-device negotiation, bare-tui, Pear OTA. Installs with npm; outside the pnpm workspace. |
 | `packages/analysis`, `packages/contracts`, `apps/specmerge`, `apps/github`, `demo-repo` | 3 | Stubs with agreed signatures. |
 | `packages/league`, `packages/stats`, `packages/personas`, `apps/web` | 4 | Stubs, plus a dashboard shell that prints the raw event stream. |
 | `apps/coordinator` | 1 | Shared authority core plus the optional Cloudflare Durable Object/WebSocket transport. |

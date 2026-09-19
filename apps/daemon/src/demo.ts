@@ -2,16 +2,24 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createCapability, P2PRoomTransport, type TransportStatus } from '@agentigram/p2p';
-import { symbolKey } from '@agentigram/protocol';
+import { type Event, symbolKey } from '@agentigram/protocol';
 import { AuthorityTransport } from './authority-transport.js';
 import type { InstallState } from './install.js';
 
 const CONNECT_TIMEOUT_MS = 20_000;
 
+/**
+ * Collisions are announced by the authority in reaction to an event it has just
+ * reduced, so they land a tick after the write that caused them. Give the
+ * publish a moment before reporting what the room saw.
+ */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 500));
+
 export async function runLocalDemo(peerCount: number): Promise<{
   peers: number;
   eventTypes: string[];
   leaseDenied: boolean;
+  collisionDetected: boolean;
 }> {
   if (!Number.isInteger(peerCount) || peerCount < 2 || peerCount > 8) {
     throw new Error('--peers must be an integer between 2 and 8');
@@ -36,7 +44,14 @@ export async function runLocalDemo(peerCount: number): Promise<{
   const authority = new AuthorityTransport(authorityState);
   const peers: P2PRoomTransport[] = [];
   const eventTypes: string[] = [];
-  authority.onEvents((events) => eventTypes.push(...events.map((event) => event.payload.type)));
+  // Keep the events themselves, not just their types: the write below has to
+  // carry the fencing token from Backend's own lease, exactly as the daemon's
+  // `attachFencingToken` does for a real hook.
+  const seen: Event[] = [];
+  authority.onEvents((events) => {
+    seen.push(...events);
+    eventTypes.push(...events.map((event) => event.payload.type));
+  });
   try {
     await authority.start();
     const invite = authority.invite;
@@ -96,10 +111,34 @@ export async function runLocalDemo(peerCount: number): Promise<{
       source: 'mcp',
       payload: { type: 'LEASE_REQUESTED', symbols: [userId], ttlMs: 600_000 },
     });
+    // Backend now actually touches the file Payments has read. This is the tier-1
+    // case: the authority narrows the write to the symbols Backend announced,
+    // finds them in Payments' read set, and opens a PREDICTED collision.
+    const granted = seen.find(
+      (event) =>
+        event.payload.type === 'LEASE_GRANTED' &&
+        (event.payload.sessionId ?? event.actor.sessionId) === 'backend',
+    );
+    const fencingToken =
+      granted?.payload.type === 'LEASE_GRANTED' ? granted.payload.fencingToken : undefined;
+    await authority.submit({
+      id: crypto.randomUUID(),
+      roomId: 'demo',
+      actor: { engineerId: 'demo-authority', sessionId: 'backend', kind: 'agent' },
+      source: 'hook',
+      payload: {
+        type: 'FILE_WRITE',
+        path: 'src/types/user.ts',
+        worktree: directory,
+        ...(fencingToken === undefined ? {} : { fencingToken }),
+      },
+    });
+    await settle();
     return {
       peers: peerCount,
       eventTypes,
       leaseDenied: eventTypes.includes('LEASE_DENIED'),
+      collisionDetected: eventTypes.includes('COLLISION'),
     };
   } finally {
     await Promise.allSettled(peers.map((peer) => peer.stop()));

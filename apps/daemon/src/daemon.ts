@@ -34,7 +34,8 @@ import pino from 'pino';
 import { AuthorityTransport } from './authority-transport.js';
 import { CursorStore } from './cursor-store.js';
 import type { InstallState } from './install.js';
-import { createIpcServer, type IpcRequest, type IpcResponse } from './ipc.js';
+import { createIpcServer, type IpcFrame, type IpcRequest, type IpcResponse } from './ipc.js';
+import { isPipe } from './runtime.js';
 import { summarise } from './summary.js';
 import { SymbolReader } from './symbol-reader.js';
 import { WorktreeWatcher } from './watcher.js';
@@ -74,6 +75,7 @@ export class LaptopDaemon {
   private readonly watchers = new Map<string, WorktreeWatcher>();
   private readonly recentAgentWrites = new Map<string, number>();
   private readonly inbox = new Map<string, string[]>();
+  private readonly subscribers = new Set<(frame: IpcFrame) => void>();
   private readonly symbols: SymbolReader;
   private readonly adapter: AgentAdapter;
   private readonly transport: RoomTransport;
@@ -104,7 +106,11 @@ export class LaptopDaemon {
     });
     this.transport.onEvents((events) => this.receive(events));
     this.transport.onStatus((status) => this.log.info({ status }, 'transport status'));
-    this.server = createIpcServer(state.socketPath, (request) => this.handle(request));
+    this.server = createIpcServer(
+      state.socketPath,
+      (request) => this.handle(request),
+      (send) => this.addSubscriber(send),
+    );
   }
 
   async start(): Promise<void> {
@@ -128,33 +134,79 @@ export class LaptopDaemon {
     for (const watcher of this.watchers.values()) await watcher.stop();
     await this.transport.stop();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
-    rmSync(this.state.socketPath, { force: true });
+    // A Windows named pipe has no directory entry to remove; `unlink` on one
+    // throws EINVAL, which `force` does not suppress. Closing the server is
+    // what releases it.
+    if (!isPipe(this.state.socketPath)) rmSync(this.state.socketPath, { force: true });
+  }
+
+  /** The room as the CLI and the TUI both see it. */
+  private statusOutput(): Record<string, unknown> {
+    const authority = this.transport instanceof AuthorityTransport ? this.transport : undefined;
+    return {
+      roomId: this.state.roomId,
+      mode: this.state.mode,
+      host: this.state.host,
+      sessionId: this.state.sessionId,
+      transport: this.transport.status,
+      lastSeq: this.roomState.lastSeq,
+      sessions: [...this.sessions],
+      agents: Object.values(this.roomState.sessions),
+      leases: Object.values(this.roomState.leases),
+      collisions: Object.values(this.roomState.collisions).filter(
+        (collision) => collision.status === 'open',
+      ),
+      negotiations: Object.values(this.roomState.negotiations),
+      summary: this.roomState.teamSummary,
+      ...(authority?.inviteUri ? { invite: authority.inviteUri } : {}),
+    };
+  }
+
+  /**
+   * Attach a room-view subscriber. It gets the current state immediately so a TUI that starts
+   * late paints a full room rather than waiting for the next event.
+   */
+  private addSubscriber(send: (frame: IpcFrame) => void): () => void {
+    this.subscribers.add(send);
+    send({ t: 'state', state: this.statusOutput() });
+    return () => this.subscribers.delete(send);
+  }
+
+  private broadcast(frame: IpcFrame): void {
+    for (const send of this.subscribers) {
+      try {
+        send(frame);
+      } catch {
+        // A dead subscriber is dropped by its own socket close handler.
+      }
+    }
   }
 
   private async handle(request: IpcRequest): Promise<IpcResponse> {
-    if (request.type === 'status') {
-      const authority = this.transport instanceof AuthorityTransport ? this.transport : undefined;
-      return {
-        ok: true,
-        output: {
-          roomId: this.state.roomId,
-          mode: this.state.mode,
-          host: this.state.host,
-          sessionId: this.state.sessionId,
-          transport: this.transport.status,
-          lastSeq: this.roomState.lastSeq,
-          sessions: [...this.sessions],
-          agents: Object.values(this.roomState.sessions),
-          leases: Object.values(this.roomState.leases),
-          collisions: Object.values(this.roomState.collisions).filter(
-            (collision) => collision.status === 'open',
-          ),
-          negotiations: Object.values(this.roomState.negotiations),
-          summary: this.roomState.teamSummary,
-          ...(authority?.inviteUri ? { invite: authority.inviteUri } : {}),
+    if (request.type === 'status') return { ok: true, output: this.statusOutput() };
+    if (request.type === 'narrate') {
+      // `PERSONA_LINES` is coordinator-authored: only the authority may put it
+      // in the room. On a peer the dialogue stays local to that laptop's own
+      // view, which is no loss — each laptop renders the room with its own
+      // on-device model anyway, and the coordination that has to replicate
+      // travels as PROPOSAL, not as prose.
+      if (!(this.transport instanceof AuthorityTransport)) {
+        return { ok: true, output: { accepted: true, replicated: false } };
+      }
+      await this.transport.submitAsAuthority({
+        id: crypto.randomUUID(),
+        roomId: this.state.roomId,
+        actor: { engineerId: this.state.engineerId, kind: 'system' },
+        source: 'system',
+        payload: {
+          type: 'PERSONA_LINES',
+          lines: request.lines.map((line) => ({ ...line, seq: this.roomState.lastSeq })),
         },
-      };
+      });
+      return { ok: true, output: { accepted: true, replicated: true } };
     }
+    // Intercepted by the IPC server, which keeps the socket open; it never reaches here.
+    if (request.type === 'subscribe') return { ok: false, error: 'subscribe is a stream' };
     if (request.type === 'human') return this.handleHumanAction(request.action);
     if (request.type === 'tool')
       return this.handleTool(request.name, request.args, request.sessionId);
@@ -218,7 +270,7 @@ export class LaptopDaemon {
         this.recordAgentWrite(guarded.payload.path);
         this.symbols.markDirty([guarded.payload.path]);
       }
-      await this.submit(guarded);
+      await this.submit(this.attachReadSymbols(guarded, input.cwd));
     }
     if (input.hook_event_name === 'SessionEnd') this.sessions.delete(sessionId);
     if (input.hook_event_name === 'SessionStart') {
@@ -366,6 +418,18 @@ export class LaptopDaemon {
       if (event.seq <= this.roomState.lastSeq) continue;
       this.roomState = reduce(this.roomState, event).state;
       this.cursor.set(event.seq);
+      // Collisions are opened by the authority as it sequences events
+      // (`AuthorityTransport.announceCollisions`), so they arrive here as
+      // ordinary replicated events like any other.
+      //
+      // The room view sees everything this laptop sees, including dashboard-only types.
+      this.broadcast({
+        t: 'event',
+        seq: event.seq,
+        eventType: event.payload.type,
+        ...(event.actor.sessionId ? { sessionId: event.actor.sessionId } : {}),
+        text: summarise(event),
+      });
       if (
         isAgentVisible(event.payload.type) &&
         ACTIONABLE_TYPES.has(event.payload.type) &&
@@ -377,6 +441,8 @@ export class LaptopDaemon {
         this.inbox.set(this.state.sessionId, current.slice(-MAX_INBOX_EVENTS));
       }
     }
+    // One state frame per batch, not per event: the room view only needs the settled result.
+    if (events.length > 0) this.broadcast({ t: 'state', state: this.statusOutput() });
   }
 
   private editDenial(input: HookInput): string | undefined {
@@ -427,6 +493,26 @@ export class LaptopDaemon {
       negotiations: Object.values(this.roomState.negotiations),
       contracts: Object.values(this.roomState.contracts),
     };
+  }
+
+  /**
+   * Resolve the symbols behind a file an agent just read.
+   *
+   * This is what separates a tier-1 collision from a tier-0 one: "you are
+   * changing `User.id`, which Payments read" versus "you are both in user.ts".
+   * Detection compares symbol keys, so a `FILE_READ` with no symbols can only
+   * ever produce the weaker tier.
+   *
+   * Resolution is local and best-effort — a repo with no tsconfig, or a
+   * non-TypeScript one, degrades to no symbols rather than failing the hook.
+   * Only symbol keys ever leave this laptop, never file contents.
+   */
+  private attachReadSymbols(event: NewEvent, cwd: string): NewEvent {
+    if (event.payload.type !== 'FILE_READ') return event;
+    if (event.payload.symbols && event.payload.symbols.length > 0) return event;
+    const symbols = this.symbols.read([event.payload.path], cwd);
+    if (symbols.length === 0) return event;
+    return { ...event, payload: { ...event.payload, symbols } };
   }
 
   private async submit(event: NewEvent): Promise<void> {

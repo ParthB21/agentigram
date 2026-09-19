@@ -1,6 +1,10 @@
 packages:
   - packages/*
   - apps/*
+  # The Bare/Pear app installs with npm: bare-pack and bare-build statically
+  # traverse require() and require.addon.resolve() calls, which pnpm's symlinked
+  # store breaks. It keeps its own package-lock.json.
+  - '!apps/tui'
   - demo-repo
 allowBuilds:
   '@parcel/watcher': true

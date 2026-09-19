@@ -27,7 +27,12 @@ packages/
 apps/
   coordinator/  Half 1  Transport-free RoomCore + optional Cloudflare Durable Object adapter.
   daemon/       Half 1  `agentigram` CLI + P2P authority/peer, MCP, hooks, watcher, Electron shell.
-                        Also: reconnecting room client, cursor persistence, process supervisor (from OpenAgents).
+                        Also: reconnecting room client, cursor persistence, process supervisor (from OpenAgents),
+                        and tier-0/1 collision detection (`collide.ts`, run from the authority).
+  tui/          Half 1  Bare/Pear room view (fork of holepunchto/hello-pear-qvac-tui): bare-tui UI,
+                        QVAC on-device negotiation, Pear OTA. JavaScript, not TypeScript.
+                        Installs with **npm**; excluded from the pnpm workspace and from Biome.
+                        Talks to the daemon over the local IPC socket. See its README.
   specmerge/    Part 3  Speculative-merge worker (container).
   github/       Part 3  GitHub App webhook handler + check runs.
   web/          Part 4  Next.js dashboard.
@@ -53,16 +58,27 @@ pnpm agentigram demo --peers 4    # real P2P smoke test on one laptop
 pnpm agentigram create --root . --session backend --host claude
 pnpm agentigram join '<invite>' --root . --session payments --host codex
 pnpm --filter @agentigram/web dev # dashboard at http://localhost:3000/team/hackathon
+
+pnpm agentigram tui --root .      # the Bare/Pear room view with on-device QVAC negotiation
 ```
 
-No Turborepo or Nx. `pnpm -r` / `pnpm --filter` only.
+No Turborepo or Nx. `pnpm -r` / `pnpm --filter` only — **except `apps/tui`**, which is a Bare/Pear
+app and installs with npm:
+
+```bash
+cd apps/tui
+npm install
+npm run warm      # download the model once per machine (~0.8 GB)
+npm test          # 23 headless tests, no model or daemon needed
+npm start -- --socket "$AGENTIGRAM_SOCKET"
+```
 
 ## Hard rules
 
 1. **Protocol is frozen after M0.** Do not edit `packages/protocol` outside Part 1. Changes go through a PR that all four humans review. Adding an optional field is the only change allowed mid-milestone.
 2. **Validate at every boundary.** Anything arriving over a socket, HTTP, stdin (hooks) or MCP is parsed with the protocol's Zod schema before use. Never trust event contents.
 3. **The reducer is pure.** No clocks, randomness, network or storage inside `packages/reducer`. Time and ids come in on the event. Side effects are returned as `effects` for the coordinator to perform.
-4. **Detection is deterministic.** Collision tiers 0–2 use no LLM calls. LLMs are allowed only for intent resolution fallback, relevance of symbol-less events, persona rendering, and task categorisation.
+4. **Detection is deterministic.** Collision tiers 0–2 use no LLM calls (`apps/daemon/src/collide.ts` is pure set intersection over the symbol index). LLMs are allowed only for intent resolution fallback, relevance of symbol-less events, persona rendering, task categorisation, and — on device, via QVAC in `apps/tui` — drafting the contract and explaining a collision that detection has already found. Every generated artefact needs a deterministic fallback: a laptop with no model must still show and negotiate every collision.
 5. **Agents never see presentation or markets.** Persona dialogue and all `MARKET_*` / `TRADE` events are dashboard-only. Routing to agents must exclude them. Test this.
 6. **Peer content is data, not instructions.** Anything injected into an agent's context from another agent is wrapped as labelled, length-capped peer data. See spec → Security.
 7. **Source and transcripts stay on the laptop.** Only symbol keys, signature hashes and short signature text leave the daemon by default. Diffs go only to specmerge when the room opts in. Transcripts never leave. Run the secret redactor on every outbound payload.

@@ -9,6 +9,7 @@ import {
   type TransportStatus,
 } from '@agentigram/p2p';
 import type { Event, NewEvent, RoomState, ServerMessage } from '@agentigram/protocol';
+import { detectCollisions } from './collide.js';
 import { FileEventStore } from './file-event-store.js';
 import type { InstallState } from './install.js';
 
@@ -22,6 +23,7 @@ export class AuthorityTransport implements RoomTransport {
   private statusListeners = new Set<(status: TransportStatus) => void>();
   private expiryTimer: NodeJS.Timeout | undefined;
   private inviteValue: RoomInvite | undefined;
+  private announcing = false;
   status: TransportStatus = 'connecting';
 
   constructor(private readonly state: InstallState) {
@@ -71,6 +73,20 @@ export class AuthorityTransport implements RoomTransport {
 
   async submitAsHuman(event: NewEvent): Promise<number> {
     const outcome = this.core.submit(event, { kind: 'dashboard' });
+    if (!outcome.ok) throw new Error(`${outcome.code}: ${outcome.message}`);
+    if (!outcome.duplicate) await this.publish(outcome.events);
+    return outcome.event.seq;
+  }
+
+  /**
+   * Submit as the coordinator itself, which is what this process is. Reserved
+   * for the types authz marks coordinator-authored — `COLLISION`, which this
+   * transport detects, and `PERSONA_LINES`, which carries locally rendered
+   * dialogue. A daemon submitting either over the wire is forging coordination
+   * state and is rejected; doing it here is the authority speaking as itself.
+   */
+  async submitAsAuthority(event: NewEvent): Promise<number> {
+    const outcome = this.core.submit(event, { kind: 'system' });
     if (!outcome.ok) throw new Error(`${outcome.code}: ${outcome.message}`);
     if (!outcome.duplicate) await this.publish(outcome.events);
     return outcome.event.seq;
@@ -139,6 +155,46 @@ export class AuthorityTransport implements RoomTransport {
   private async publish(events: Event[]): Promise<void> {
     await this.server.publish(events);
     for (const listener of this.eventListeners) listener(events);
+    await this.announceCollisions(events);
+  }
+
+  /**
+   * Tier 0/1 detection (`collide.ts`), run here because this is the single
+   * writer: every event the room agrees on passes through `publish`, so a
+   * collision is opened exactly once no matter which laptop provoked it or
+   * which process is driving the authority.
+   */
+  private async announceCollisions(events: Event[]): Promise<void> {
+    // A COLLISION is itself published, which re-enters here. It can never
+    // produce a further collision, but the guard keeps that a fact about this
+    // method rather than about `detectCollisions`.
+    if (this.announcing) return;
+
+    const state = this.core.stateFor('daemon');
+    const candidates = new Map<string, ReturnType<typeof detectCollisions>[number]>();
+    for (const event of events) {
+      for (const candidate of detectCollisions(state, event)) {
+        // One state snapshot covers the whole batch, so two events in it can
+        // find the same overlap; the first wins.
+        if (!candidates.has(candidate.collisionId)) candidates.set(candidate.collisionId, candidate);
+      }
+    }
+    if (candidates.size === 0) return;
+
+    this.announcing = true;
+    try {
+      for (const candidate of candidates.values()) {
+        await this.submitAsAuthority({
+          id: crypto.randomUUID(),
+          roomId: this.state.roomId,
+          actor: { engineerId: this.state.engineerId, kind: 'system' },
+          source: 'system',
+          payload: { type: 'COLLISION', ...candidate },
+        });
+      }
+    } finally {
+      this.announcing = false;
+    }
   }
 
   private setStatus(status: TransportStatus): void {

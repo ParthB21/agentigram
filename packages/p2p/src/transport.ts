@@ -152,6 +152,13 @@ export class P2PRoomTransport implements RoomTransport {
   }
 
   private async replay(): Promise<void> {
+    // The room's history is shorter than what this peer has already applied,
+    // which means the authority recreated the room rather than resumed it. Our
+    // cursor now points past the end of a history that no longer exists, and
+    // every replicated event would be filtered out as "already seen" — the peer
+    // would sit there `connected` and permanently empty. Start over instead.
+    if (this.eventCore.length < this.cursor) this.cursor = 0;
+
     const events: Event[] = [];
     for (let index = this.cursor; index < this.eventCore.length; index += 1) {
       const value = await this.eventCore.get(index);

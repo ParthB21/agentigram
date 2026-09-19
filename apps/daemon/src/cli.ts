@@ -1,5 +1,6 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -53,11 +54,65 @@ function host(value: string): InstallState['host'] {
 function verifyHost(value: InstallState['host']): void {
   // Antigravity runs embedded in the IDE — no standalone binary to probe.
   if (value === 'antigravity') return;
-  const binary =
-    value === 'codex' ? 'codex' : value === 'gemini-cli' ? 'gemini' : 'claude';
-  const detected = spawnSync(binary, ['--version'], { stdio: 'ignore' });
+  const binary = value === 'codex' ? 'codex' : value === 'gemini-cli' ? 'gemini' : 'claude';
+  // On Windows these are installed as `.cmd`/`.ps1` shims, which CreateProcess
+  // will not resolve from a bare name — only the shell's PATHEXT search finds
+  // them. Without `shell`, every Windows laptop fails this check with the agent
+  // sitting right there on the PATH.
+  const detected = spawnSync(binary, ['--version'], {
+    stdio: 'ignore',
+    shell: process.platform === 'win32',
+  });
   if (detected.error || detected.status !== 0) {
     throw new Error(`${binary} was not found on PATH; install it before joining`);
+  }
+}
+
+/**
+ * The Bare runtime that hosts the TUI. `apps/tui` installs with npm (bare-pack
+ * traverses require() statically, which pnpm's symlinks break), so resolve
+ * bare-runtime from that tree rather than the daemon's, and fall back to a
+ * globally installed `bare` if the app's own dependencies are not there yet.
+ */
+function bareBinary(): string {
+  try {
+    const tuiRequire = createRequire(new URL('../../tui/package.json', import.meta.url));
+    return (tuiRequire('bare-runtime') as (referrer?: string) => string)();
+  } catch {
+    return 'bare';
+  }
+}
+
+/**
+ * Check the root before anything tries to run git in it.
+ *
+ * Node reports a missing `cwd` as ENOENT *on the command*, so a path that does
+ * not exist surfaces as `spawnSync git ENOENT` — which reads as "git is not
+ * installed" and sends people off to reinstall a working git. It is also the
+ * first thing that happens on Windows when a shell does not expand `~`, since
+ * the literal `~/work/demo` is then passed straight through.
+ */
+function verifyRepository(root: string): void {
+  const absolute = resolve(root);
+  if (!existsSync(absolute)) {
+    throw new Error(
+      `${absolute} does not exist.` +
+        (root.includes('~')
+          ? '\nPowerShell and cmd do not expand "~" for arguments passed to node. Use the full path.'
+          : ''),
+    );
+  }
+  if (!statSync(absolute).isDirectory()) throw new Error(`${absolute} is not a directory`);
+  const git = spawnSync('git', ['rev-parse', '--git-dir'], {
+    cwd: absolute,
+    stdio: 'ignore',
+    shell: process.platform === 'win32',
+  });
+  if (git.error) {
+    throw new Error('git was not found on PATH; Agentigram needs it to identify the repository');
+  }
+  if (git.status !== 0) {
+    throw new Error(`${absolute} is not a Git repository; clone or "git init" it first`);
   }
 }
 
@@ -131,6 +186,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         engineer?: string;
       }) => {
         const root = resolveRoot(options.root);
+        verifyRepository(root);
         const selectedHost = host(options.host);
         verifyHost(selectedHost);
         const state = install({
@@ -169,6 +225,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         options: { root: string; session: string; host: string; engineer?: string },
       ) => {
         const root = resolveRoot(options.root);
+        verifyRepository(root);
         const invite = decodeInvite(inviteUri);
         const fingerprint = repositoryFingerprint(root);
         if (fingerprint !== invite.repositoryFingerprint) {
@@ -294,6 +351,45 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         env: { ...process.env, AGENTIGRAM_ROOT: resolveRoot(options.root) },
       });
       child.unref();
+    });
+
+  program
+    .command('tui')
+    .description('Open the Bare/Pear room view with on-device QVAC negotiation.')
+    .option('--root <path>', 'repository root', defaultRoot)
+    .option('--model <name>', 'QVAC model constant to load')
+    .option('--ctx <tokens>', 'context window in tokens')
+    .option('--verbose', 'log engine and native addon detail to stderr')
+    .action(async (options: { root: string; model?: string; ctx?: string; verbose?: boolean }) => {
+      const state = requiredState(resolveRoot(options.root));
+      // Fail here rather than inside Bare: "not joined" is a far better message
+      // than a socket error from a TUI that has already taken over the screen.
+      await waitForDaemon(state);
+      const entry = fileURLToPath(new URL('../../tui/bin.mjs', import.meta.url));
+      const args = [
+        entry,
+        '--socket',
+        state.socketPath,
+        ...(options.model ? ['--model', options.model] : []),
+        ...(options.ctx ? ['--ctx', options.ctx] : []),
+        ...(options.verbose ? ['--verbose'] : []),
+      ];
+      // The TUI owns the terminal: inherit stdio and stay in the foreground.
+      const child = spawn(bareBinary(), args, { stdio: 'inherit' });
+      await new Promise<void>((resolve, reject) => {
+        child.once('error', (error) =>
+          reject(
+            new Error(
+              `could not start Bare (${error.message}). Install it with ` +
+                '`npm i -g bare-runtime`, or run `npm install` in apps/tui.',
+            ),
+          ),
+        );
+        child.once('exit', (code) => {
+          if (code) process.exitCode = code;
+          resolve();
+        });
+      });
     });
 
   program

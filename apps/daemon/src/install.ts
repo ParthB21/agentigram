@@ -13,7 +13,7 @@ import { homedir, userInfo } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { RoomInvite } from '@agentigram/p2p';
-import { runtimePaths } from './runtime.js';
+import { isPipe, runtimePaths } from './runtime.js';
 
 const SETTINGS_PATH = join('.claude', 'settings.local.json');
 const CODEX_HOOKS_PATH = join('.codex', 'hooks.json');
@@ -340,7 +340,10 @@ export function uninstall(root: string, runtimeBase?: string): InstallState {
       // A directory with unrelated files must be preserved.
     }
   }
-  rmSync(state.socketPath, { force: true });
+  // A Windows named pipe has no directory entry to remove, and `unlink` on one
+  // throws EINVAL — which `force` does not suppress, so this aborted `leave`
+  // before the install state was removed and the repo stayed "already joined".
+  if (!isPipe(state.socketPath)) rmSync(state.socketPath, { force: true });
   rmSync(statePath, { force: true });
   return state;
 }
