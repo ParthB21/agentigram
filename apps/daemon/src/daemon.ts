@@ -45,6 +45,7 @@ import { isPipe } from './runtime.js';
 import { summarise } from './summary.js';
 import { SymbolReader } from './symbol-reader.js';
 import { WorktreeWatcher } from './watcher.js';
+import { WriteNarrator } from './write-narration.js';
 
 const SESSION_HEARTBEAT_MS = 10_000;
 /**
@@ -82,6 +83,7 @@ export class LaptopDaemon {
   private readonly watchers = new Map<string, WorktreeWatcher>();
   private readonly recentAgentWrites = new Map<string, number>();
   private readonly inbox = new WakeInbox();
+  private readonly writes = new WriteNarrator();
   private readonly subscribers = new Set<(frame: IpcFrame) => void>();
   /** sessionId -> when it last did something, and what. Derived, never stored. */
   private readonly activity = new Map<string, { at: number; what: string }>();
@@ -699,7 +701,11 @@ export class LaptopDaemon {
       //
       // The room view sees everything this laptop sees, including dashboard-only types.
       const speakable = isFreshEvent(event, now) && !isRepeatedPresence(before, event);
-      const speech = speakable ? speechMetadata(event) : undefined;
+      // Writes are narrated separately because saying them well needs memory of the last few:
+      // one save is "editing user.ts", ten in a row is one sentence, not ten.
+      const speech = speakable
+        ? (speechMetadata(event) ?? this.writes.line(event, now))
+        : undefined;
       this.broadcast({
         t: 'event',
         seq: event.seq,
