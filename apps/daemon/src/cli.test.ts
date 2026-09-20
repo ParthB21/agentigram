@@ -1,6 +1,12 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildProgram, detectHost, resolveRepositoryRoot } from './cli.js';
+import {
+  buildProgram,
+  detectHost,
+  fingerprintRepositoryRoots,
+  repositoryFingerprintMatches,
+  resolveRepositoryRoot,
+} from './cli.js';
 import { summarise } from './summary.js';
 
 describe('agentigram CLI', () => {
@@ -68,6 +74,25 @@ describe('agentigram CLI', () => {
     expect(detectHost({ CLAUDECODE: '1' })).toBe('claude');
     expect(detectHost({ GEMINI_CLI: '1' })).toBe('gemini');
     expect(detectHost({ AGENTIGRAM_HOST: 'antigravity' })).toBe('antigravity');
+  });
+
+  it('identifies repositories by Git history rather than clone URL', () => {
+    const root = 'd76ed39ee1613d932ac0547480a4c98df2999590';
+    const fingerprint = fingerprintRepositoryRoots([root]);
+
+    expect(fingerprint).toMatch(/^git-roots-v1:[a-f0-9]{64}$/);
+    expect(fingerprintRepositoryRoots([root])).toBe(fingerprint);
+    expect(fingerprintRepositoryRoots([root.toUpperCase()])).toBe(fingerprint);
+    expect(fingerprintRepositoryRoots(['b', 'a'])).toBe(fingerprintRepositoryRoots(['a', 'b']));
+  });
+
+  it('strictly checks history invites while accepting URL-based legacy invites', () => {
+    const local = fingerprintRepositoryRoots(['same-root']);
+    expect(repositoryFingerprintMatches(local, local)).toBe(true);
+    expect(repositoryFingerprintMatches(local, fingerprintRepositoryRoots(['other-root']))).toBe(
+      false,
+    );
+    expect(repositoryFingerprintMatches(local, 'a'.repeat(64))).toBe(true);
   });
 
   it('summarises events on one line', () => {

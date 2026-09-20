@@ -2,7 +2,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { accessSync, chmodSync, constants, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCapability, decodeInvite } from '@agentigram/p2p';
 import { Command } from 'commander';
@@ -152,23 +152,36 @@ function verifyRepository(root: string): void {
   }
 }
 
-function repositoryFingerprint(root: string): string {
-  const absolute = resolve(root);
-  let identity: string;
-  try {
-    identity = execFileSync('git', ['config', '--get', 'remote.origin.url'], {
-      cwd: absolute,
-      encoding: 'utf8',
-    }).trim();
-  } catch {
-    identity = '';
-  }
-  if (!identity) {
-    identity = `${basename(absolute)}:${execFileSync('git', ['rev-list', '--max-parents=0', 'HEAD'], { cwd: absolute, encoding: 'utf8' }).trim()}`;
-  }
-  return createHash('sha256')
-    .update(identity.replace(/\.git$/, '').toLowerCase())
-    .digest('hex');
+const REPOSITORY_FINGERPRINT_PREFIX = 'git-roots-v1:';
+
+/**
+ * A repository identity that survives host moves, renames, and different clone URLs.
+ * Sorting also makes histories with multiple roots deterministic.
+ */
+export function fingerprintRepositoryRoots(roots: readonly string[]): string {
+  const normalized = [...new Set(roots.map((root) => root.trim().toLowerCase()).filter(Boolean))]
+    .sort()
+    .join('\n');
+  if (!normalized) throw new Error('repository has no commits; create an initial commit first');
+  return `${REPOSITORY_FINGERPRINT_PREFIX}${createHash('sha256').update(normalized).digest('hex')}`;
+}
+
+export function repositoryFingerprint(root: string): string {
+  const roots = execFileSync('git', ['rev-list', '--max-parents=0', 'HEAD'], {
+    cwd: resolve(root),
+    encoding: 'utf8',
+  }).split(/\s+/);
+  return fingerprintRepositoryRoots(roots);
+}
+
+/**
+ * Invites created before git-roots-v1 used the origin URL, which changes when
+ * a repository is renamed or cloned through a different protocol. They cannot
+ * be compared reliably after a rename, so keep them joinable. New invites use
+ * the self-identifying prefix and are checked strictly against Git history.
+ */
+export function repositoryFingerprintMatches(local: string, invited: string): boolean {
+  return !invited.startsWith(REPOSITORY_FINGERPRINT_PREFIX) || local === invited;
 }
 
 /** Poll until the process is gone, or give up — a stuck daemon must not block `leave`. */
@@ -335,8 +348,8 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         verifyRepository(root);
         const invite = decodeInvite(inviteUri);
         const fingerprint = repositoryFingerprint(root);
-        if (fingerprint !== invite.repositoryFingerprint) {
-          throw new Error('this invite belongs to a different Git repository');
+        if (!repositoryFingerprintMatches(fingerprint, invite.repositoryFingerprint)) {
+          throw new Error('this invite belongs to a different Git history');
         }
         const selectedHost = host(options.host);
         const selectedSession = sessionName(session, options.session);
@@ -347,7 +360,9 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           mode: 'peer',
           host: selectedHost,
           sessionId: selectedSession,
-          repositoryFingerprint: fingerprint,
+          // The room keeps its authority-issued identity. For a legacy invite
+          // this is the old URL-based value; new invites equal `fingerprint`.
+          repositoryFingerprint: invite.repositoryFingerprint,
           invite,
           engineerId: options.engineer,
         });
