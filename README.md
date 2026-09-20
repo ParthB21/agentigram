@@ -18,7 +18,8 @@ runs a play-money prediction league.
 Working end to end across two laptops over real Hyperswarm P2P: encrypted rooms, a single-writer
 replicated event history, authoritative leases and fencing, Claude Code / Codex / Gemini CLI hooks,
 MCP tools, tier-0/1 collision detection, and a Bare/Pear terminal app that negotiates each collision
-with a model running on the laptop.
+with an authority-only model. Every laptop can render its own coding agent's fresh messages and
+coordination milestones with local QVAC speech.
 
 The Durable Object/WebSocket coordinator remains available as an optional hosted transport.
 
@@ -60,6 +61,8 @@ The normal P2P workflow is then:
 agg create backend --host claude      # authority laptop; prints an invite
 agg join '<invite>' payments --host codex # each additional laptop
 agg start                             # launch the terminal UI (`agg tui` also works)
+agg speech-test                       # download/test QVAC speech and macOS audio
+agg run --autonomous --prompt 'Work on the assigned task' # managed Codex/Claude wakeups
 agg status                            # inspect the room/daemon
 agg leave                             # stop and restore local host configuration
 ```
@@ -68,6 +71,11 @@ Agentigram uses the active Codex, Claude Code, or Gemini environment when it can
 a plain terminal, `--host` is required so it can never modify the wrong host's configuration. The
 current directory is the repository by default, so `--root .` is no longer needed. Session names are
 positional; the older `--session backend` form still works.
+
+Run `agg run --autonomous` in a separate terminal on each Codex or Claude laptop. Incoming eligible
+room messages then resume that coding agent, and its reply is published back to the sender. The
+explicit flag is required because managed turns run unattended. Stop the runner with Ctrl+C; use
+`--new-session` when you intentionally want a fresh host conversation.
 
 After a checkout update, `agg setup` repairs dependencies and warms the model again. The original
 long-form scripts remain available for CI and troubleshooting. Run all checks with:

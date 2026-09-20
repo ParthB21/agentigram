@@ -17,10 +17,18 @@ export type HostAdapter = {
 };
 
 export type AdapterOptions = {
+  /** Dangerous unattended host flags are unavailable without explicit consent. */
+  autonomous?: boolean;
   /** Replace the host binary — tests point this at a fake. */
   command?: string;
   prefixArgs?: string[];
 };
+
+function requireAutonomous(options: AdapterOptions): void {
+  if (options.autonomous !== true) {
+    throw new Error('managed host adapters require explicit autonomous mode');
+  }
+}
 
 function json(line: string): Record<string, unknown> | undefined {
   try {
@@ -36,11 +44,11 @@ const str = (value: unknown): string | undefined =>
 
 /**
  * `claude --print --output-format stream-json` (which needs `--verbose`).
- * Autonomous mode adds `--dangerously-skip-permissions`; Agentigram's own hook
- * guards (repository confinement, leases, destructive commands) stay in force
- * because the hooks still run.
+ * Auto permission mode keeps the run non-interactive while Claude's classifier
+ * and Agentigram's hooks continue reviewing actions.
  */
 export function claudeAdapter(options: AdapterOptions = {}): HostAdapter {
+  requireAutonomous(options);
   const command = options.command ?? 'claude';
   const prefix = options.prefixArgs ?? [];
   const common = [
@@ -48,7 +56,8 @@ export function claudeAdapter(options: AdapterOptions = {}): HostAdapter {
     '--output-format',
     'stream-json',
     '--verbose',
-    '--dangerously-skip-permissions',
+    '--permission-mode',
+    'auto',
   ];
   return {
     host: 'claude-code',
@@ -92,12 +101,14 @@ export function claudeAdapter(options: AdapterOptions = {}): HostAdapter {
  * `codex exec --json`: a JSONL stream whose `thread.started` names the thread
  * and whose last `agent_message` item is the answer. Resuming is
  * `codex exec resume <id>`; `-` reads the prompt from stdin. Autonomous mode
- * uses the documented `--sandbox danger-full-access` (exec never prompts).
+ * uses workspace-write plus automatic approval review. It can edit the checked
+ * out repository without granting peer-triggered turns unrestricted host access.
  */
 export function codexAdapter(options: AdapterOptions = {}): HostAdapter {
+  requireAutonomous(options);
   const command = options.command ?? 'codex';
   const prefix = options.prefixArgs ?? [];
-  const common = ['exec', '--json', '--sandbox', 'danger-full-access'];
+  const common = ['exec', '--json', '--sandbox', 'workspace-write', '--approve-for-me'];
   return {
     host: 'codex',
     start: (prompt) => ({

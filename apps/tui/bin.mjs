@@ -8,7 +8,15 @@ import path from 'bare-path'
 import pkg from './package.json'
 import Inference from './lib/inference.js'
 import Room from './lib/room.js'
+import SpeechEngine from './lib/speech/engine.js'
+import SpeechModule from './lib/speech/index.js'
+import PlayerModule from './lib/speech/player.js'
+import SettingsModule from './lib/speech/settings.js'
 import { App as UI } from './ui/app.js'
+
+const { Speech } = SpeechModule
+const { Player } = PlayerModule
+const { Settings } = SettingsModule
 
 const appName = pkg.productName || pkg.name
 const isDev = path.basename(Bare.argv[0]) === (isWindows ? 'bare.exe' : 'bare')
@@ -59,10 +67,17 @@ const inference = new Inference({
   verbose
 })
 const room = new Room({ socket })
+const speechEngine = new SpeechEngine()
+const speech = new Speech({
+  engine: speechEngine,
+  player: new Player(),
+  settings: new Settings(dir)
+})
 
-const ui = new UI({ inference, room, model, version: pkg.version })
+const ui = new UI({ inference, room, speech, model, version: pkg.version })
 const program = new Program(ui, { mouse: true })
 let inferenceStarted = false
+let speechFloor = null
 
 // ── bridge ────────────────────────────────────────────────────────────────
 //
@@ -77,14 +92,40 @@ inference.on('error', (err) => repaint({ type: 'qvac.error', message: err.messag
 
 room.on('state', (state) => {
   program.send({ type: 'room.state', state })
+  speech.setLocalSession(state.sessionId)
+  if (speechFloor === null) speechFloor = state.lastSeq
   if (state.mode === 'authority' && !inferenceStarted) {
     inferenceStarted = true
     inference.ready().catch((err) => program.send({ type: 'qvac.error', message: err.message }))
   }
 })
-room.on('event', (frame) => program.send({ type: 'room.event', frame }))
+room.on('event', (frame) => {
+  program.send({ type: 'room.event', frame })
+  if (frame.speech && speechFloor !== null && frame.seq > speechFloor) {
+    speech.enqueue({
+      seq: frame.seq,
+      speaker: frame.sessionId || frame.speech.speaker,
+      text: frame.speech.text,
+      priority: frame.speech.priority
+    })
+  }
+})
 room.on('status', (status) => program.send({ type: 'room.status', status }))
 room.on('warn', (text) => program.send({ type: 'room.warn', text }))
+
+speech.on('progress', (percentage) => program.send({ type: 'speech.progress', percentage }))
+speech.on('ready', (gpu) => repaint({ type: 'speech.ready', gpu }))
+speech.on('queued', ({ speaker }) => program.send({ type: 'speech.queued', sessionId: speaker }))
+speech.on('started', ({ speaker }) => program.send({ type: 'speech.started', sessionId: speaker }))
+speech.on('finished', ({ speaker, interrupted }) =>
+  program.send({ type: 'speech.finished', sessionId: speaker, interrupted })
+)
+speech.on('muted', ({ sessionId, muted }) =>
+  program.send({ type: 'speech.muted', sessionId, muted })
+)
+speech.on('error', (err, sessionId) =>
+  repaint({ type: 'speech.error', message: err.message, sessionId })
+)
 
 // Send a Msg *and* force the next frame to repaint every row.
 //
@@ -107,7 +148,7 @@ inference.on('loaded', (loadedModel, loadedCtx) => {
 // ── lifecycle ─────────────────────────────────────────────────────────────
 
 function teardown() {
-  const resources = [room.close()]
+  const resources = [room.close(), speech.close()]
   if (inferenceStarted) resources.push(inference.close())
   return Promise.allSettled(resources)
 }

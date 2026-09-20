@@ -15,6 +15,13 @@ module.exports = class SpeechEngine extends ReadyResource {
     this.pipe = null
     this._seq = 0
     this._pending = new Map() // id -> { resolve, reject }
+    this._loaded = new Promise((resolve, reject) => {
+      this._onloaded = resolve
+      this._onloaderror = reject
+    })
+    // Loading is intentionally lazy. Avoid an unhandled rejection when a
+    // worker fails before the first line asks for readiness.
+    this._loaded.catch(() => {})
     this._onclosed = null
     this._closed = new Promise((resolve) => {
       this._onclosed = resolve
@@ -30,6 +37,7 @@ module.exports = class SpeechEngine extends ReadyResource {
     this.IPC.on('exit', (code) => {
       if (code === 0 || this.closing !== null || this.closed) return
       const err = new Error(`Speech worker exited with code ${code}`)
+      this._onloaderror(err)
       this._failAll(err)
       this.emit('error', err)
     })
@@ -68,12 +76,17 @@ module.exports = class SpeechEngine extends ReadyResource {
         this.emit('progress', msg.percentage)
         break
       case 'ready':
+        this._onloaded(msg.gpu)
         this.emit('loaded', msg.gpu)
         break
       case 'audio': {
         const pending = this._pending.get(msg.id)
         this._pending.delete(msg.id)
-        pending?.resolve({ samples: msg.samples, sampleRate: msg.sampleRate })
+        try {
+          pending?.resolve({ samples: decodePcm(msg.pcm), sampleRate: msg.sampleRate })
+        } catch (err) {
+          pending?.reject(err)
+        }
         break
       }
       case 'error': {
@@ -83,6 +96,7 @@ module.exports = class SpeechEngine extends ReadyResource {
           this._pending.delete(msg.id)
           pending.reject(err)
         } else {
+          this._onloaderror(err)
           this._failAll(err)
           this.emit('failure', err)
         }
@@ -94,12 +108,23 @@ module.exports = class SpeechEngine extends ReadyResource {
     }
   }
 
+  ensureLoaded() {
+    return this.ready().then(() => this._loaded)
+  }
+
   synthesize(text, description) {
-    if (this.pipe === null) return Promise.reject(new Error('speech engine is not running'))
     const id = ++this._seq
     return new Promise((resolve, reject) => {
       this._pending.set(id, { resolve, reject })
-      this._send({ t: 'speak', id, text, description })
+      this.ensureLoaded().then(
+        () => {
+          if (this._pending.has(id)) this._send({ t: 'speak', id, text, description })
+        },
+        (err) => {
+          if (!this._pending.delete(id)) return
+          reject(err)
+        }
+      )
     })
   }
 
@@ -126,3 +151,18 @@ function cancelled() {
   err.cancelled = true
   return err
 }
+
+function decodePcm(encoded) {
+  if (typeof encoded !== 'string' || encoded.length === 0) {
+    throw new Error('speech worker returned invalid PCM audio')
+  }
+  const bytes = Buffer.from(encoded, 'base64')
+  if (bytes.length === 0 || bytes.length % 2 !== 0) {
+    throw new Error('speech worker returned malformed PCM audio')
+  }
+  const samples = new Int16Array(bytes.length / 2)
+  for (let i = 0; i < samples.length; i++) samples[i] = bytes.readInt16LE(i * 2)
+  return samples
+}
+
+module.exports.decodePcm = decodePcm

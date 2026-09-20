@@ -1,4 +1,5 @@
 import { MAX_MESSAGE_TEXT_LENGTH } from '@agentigram/protocol';
+import { wrapPeerData } from '@agentigram/adapters';
 import { z } from 'zod';
 import type { InboxItem } from '../inbox.js';
 
@@ -27,12 +28,13 @@ const RESULT_INSTRUCTIONS = [
 ].join('\n');
 
 /**
- * The turn's prompt. Peer text arrives already labelled and wrapped as
- * untrusted data (`agentContextText`); this only frames it and states the
- * required result shape.
+ * The turn's prompt. Every inbox item is independently wrapped so sender and
+ * event type remain visible without ever becoming host-level instructions.
  */
 export function wakePrompt(items: readonly InboxItem[], repoState: string): string {
-  let context = items.map((item) => item.text).join('\n\n');
+  let context = items
+    .map((item) => wrapPeerData({ from: item.from, kind: item.eventType, text: item.text }))
+    .join('\n\n');
   if (context.length > MAX_PROMPT_CONTEXT) context = `${context.slice(0, MAX_PROMPT_CONTEXT)}…`;
   return [
     'You are a coding agent in a shared Agentigram room. Another agent sent the message(s) below.',

@@ -11,7 +11,7 @@
 // The screen answers one question: what is every agent in this room doing, and
 // what is about to break. The bottom panel is the negotiation — the only place
 // the on-device model's output can leave this laptop, and only on a keypress.
-const { quit, batch, spinner, viewport, style } = require('bare-tui')
+const { quit, spinner, viewport, style } = require('bare-tui')
 const {
   CONTRACT_FORMAT,
   contractPrompt,
@@ -43,9 +43,10 @@ const PANEL_H = 6
 const PANEL_MIN_H = 4
 
 // ── speech button glyphs ──────────────────────────────────────────────────
-const SPEECH_IDLE = '[♪]'
-const SPEECH_PLAYING = '[▶]'
+const SPEECH_PLAYING = '[♪]'
+const SPEECH_IDLE = '[▶]'
 const SPEECH_MUTED = '[×]'
+const SPEECH_MISSING = '[×]'
 const SPEECH_UNAVAILABLE = '[!]'
 const SPEECH_BTN_WIDTH = 3 // visible characters for the bracket+glyph+bracket
 
@@ -98,7 +99,9 @@ class App {
      * Whether the Speech controller has errored out irrecoverably.
      * A single model error sets this; messaging continues unaffected.
      */
-    this.speechUnavailable = false
+    this.speechErrors = new Set()
+    this.speechLoading = false
+    this.speechPercentage = 0
 
     // ── keyboard selection ────────────────────────────────────────────────
     /** Index of the selected agent row (for keyboard 's' toggle). */
@@ -148,6 +151,11 @@ class App {
         // Seed the local session from the room state if not already known.
         if (!this.localSession && msg.state?.sessionId) {
           this.localSession = msg.state.sessionId
+        }
+        if (this.speech) {
+          for (const agent of msg.state?.agents || []) {
+            this.speechMuted.set(agent.sessionId, this.speech.isMuted(agent.sessionId))
+          }
         }
         return this._intake()
 
@@ -226,11 +234,13 @@ class App {
       // The UI only updates visual state — it never calls TTS APIs itself.
 
       case 'speech.progress':
-        // Model download progress; no visual change needed in the agent rows.
+        this.speechLoading = true
+        this.speechPercentage = msg.percentage
         return [this, null]
 
       case 'speech.ready':
-        this.speechUnavailable = false
+        this.speechLoading = false
+        this.speechErrors.clear()
         this._layout()
         return [this, null]
 
@@ -241,6 +251,7 @@ class App {
       case 'speech.started':
         // msg.sessionId: whose voice is now playing.
         this.speakingSession = msg.sessionId || null
+        if (msg.sessionId) this.speechErrors.delete(msg.sessionId)
         this._layout()
         return [this, null]
 
@@ -261,7 +272,8 @@ class App {
 
       case 'speech.error':
         this._note(`speech error: ${msg.message}`)
-        this.speechUnavailable = true
+        if (msg.sessionId) this.speechErrors.add(msg.sessionId)
+        else for (const agent of this.state?.agents || []) this.speechErrors.add(agent.sessionId)
         this.speakingSession = null
         this._layout()
         return [this, null]
@@ -376,7 +388,10 @@ class App {
    * start of the row (used by hitbox registration in _agents()).
    */
   _speechButton(sessionId) {
-    if (this.speechUnavailable) {
+    if (!this.speech) {
+      return style().foreground(MUTED).render(SPEECH_MISSING)
+    }
+    if (this.speechErrors.has(sessionId)) {
       return style().foreground(DANGER).render(SPEECH_UNAVAILABLE)
     }
     if (this.speakingSession === sessionId) {
@@ -444,10 +459,7 @@ class App {
     return [
       this,
       () => {
-        this.askId = this.inference.ask(
-          contractPrompt(next.collision, this.state),
-          CONTRACT_FORMAT
-        )
+        this.askId = this.inference.ask(contractPrompt(next.collision, this.state), CONTRACT_FORMAT)
         return null
       }
     ]
@@ -466,9 +478,7 @@ class App {
       return [
         this,
         () => {
-          this.askId = this.inference.ask(
-            explainPrompt(current.collision, this.state, contract)
-          )
+          this.askId = this.inference.ask(explainPrompt(current.collision, this.state, contract))
           return null
         }
       ]
@@ -599,10 +609,7 @@ class App {
 
   _header() {
     const state = this.state || {}
-    const left = style()
-      .foreground(ACCENT)
-      .bold()
-      .render(`agentigram ${this.roomId}`)
+    const left = style().foreground(ACCENT).bold().render(`agentigram ${this.roomId}`)
     const mode = state.mode ? ` ${state.mode}` : ''
     const link =
       this.link === 'connected'
@@ -649,7 +656,10 @@ class App {
       const sessionCol = pad(agent.sessionId, 12)
       const hostLabel = agent.host || ''
       // At very narrow widths, truncate the host label rather than the button.
-      const actualHostWidth = Math.min(12, Math.max(0, this.width - 2 - 12 - 1 - SPEECH_BTN_WIDTH - 1 - 4))
+      const actualHostWidth = Math.min(
+        12,
+        Math.max(0, this.width - 2 - 12 - 1 - SPEECH_BTN_WIDTH - 1 - 4)
+      )
       const hostCol = pad(hostLabel.slice(0, actualHostWidth), actualHostWidth)
 
       // ── fixed-column budget (visible characters) ───────────────────────────
@@ -659,17 +669,10 @@ class App {
 
       // ── current work ──────────────────────────────────────────────────────
       const doingRaw =
-        agent.status === 'ended'
-          ? 'left'
-          : here === 'stale'
-            ? 'offline'
-            : busy
-              ? busy.what
-              : 'idle'
+        agent.status === 'ended' ? 'left' : here === 'stale' ? 'offline' : busy ? busy.what : 'idle'
       // Truncate activity text to fit, then re-apply style.
-      const doingTruncated = doingRaw.length > doingBudget
-        ? `${doingRaw.slice(0, doingBudget - 1)}…`
-        : doingRaw
+      const doingTruncated =
+        doingRaw.length > doingBudget ? `${doingRaw.slice(0, doingBudget - 1)}…` : doingRaw
       const doingStyled =
         agent.status === 'ended'
           ? style().foreground(MUTED).render(doingTruncated)
@@ -734,8 +737,7 @@ class App {
               this.modelAccess === 'authority'
                 ? '  [enter] send proposal   [r] redraft   [x] dismiss'
                 : '  [enter] send proposal   [x] dismiss'
-            ) +
-          (generated ? '' : style().foreground(MUTED).render('   (deterministic draft)'))
+            ) + (generated ? '' : style().foreground(MUTED).render('   (deterministic draft)'))
         : phase === 'sending'
           ? `  ${this.spinner.view()} sending…`
           : phase === 'sent'
@@ -760,9 +762,10 @@ class App {
     const counts = summary
       ? `${summary.activeSessions}/${summary.sessions} active · ${summary.openCollisions} open · ${summary.activeLeases} leases`
       : 'waiting for the daemon'
+    const voice = this.speechLoading ? ` · voice ${Math.round(this.speechPercentage)}%` : ''
     return style()
       .foreground(MUTED)
-      .render(fit(`  ${counts}   [q] quit   [s] voice`, this.width))
+      .render(fit(`  ${counts}${voice}   [q] quit   [s] voice`, this.width))
   }
 }
 

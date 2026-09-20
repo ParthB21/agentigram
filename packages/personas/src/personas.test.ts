@@ -79,9 +79,16 @@ describe('@agentigram/personas', () => {
     });
   });
 
-  it('does not expose raw tool calls as speech', () => {
+  it('keeps routine activity and raw tool calls silent', () => {
     expect(
       speechForEvent(event(6, { type: 'TOOL_CALL', tool: 'Bash: token=secret', phase: 'post' })),
     ).toBeUndefined();
+    expect(
+      speechForEvent(event(7, { type: 'FILE_READ', path: 'src/user.ts' })),
+    ).toBeUndefined();
+    expect(
+      speechForEvent(event(8, { type: 'FILE_WRITE', path: 'src/user.ts', worktree: '/repo' })),
+    ).toBeUndefined();
+    expect(speechForEvent(event(9, { type: 'HEARTBEAT', sessionId: 'backend' }))).toBeUndefined();
   });
 });

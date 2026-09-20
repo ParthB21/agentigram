@@ -15,7 +15,6 @@ const SPEAKABLE_TYPES = new Set([
   'BUG',
   'MESSAGE',
   'COMPLETE_CLAIMED',
-  'FILE_WRITE',
   'API_DELTA',
   'COLLISION',
   'LEASE_DENIED',
@@ -23,10 +22,7 @@ const SPEAKABLE_TYPES = new Set([
   'COUNTER',
   'ACCEPT',
   'ESCALATE',
-  'CONTRACT_COMPILED',
-  'SPEC_MERGE_RESULT',
   'RUN_VERIFIED',
-  'DUEL_RESULT',
 ]);
 
 export type PersonaCard = {

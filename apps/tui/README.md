@@ -29,7 +29,7 @@ Forked from [`holepunchto/hello-pear-qvac-tui`](https://github.com/holepunchto/h
 
 ## Running it
 
-The TUI is a *view* on a room; the daemon owns the room. Start the daemon first:
+The TUI is a _view_ on a room; the daemon owns the room. Start the daemon first:
 
 ```bash
 # once per clone — installs both dependency trees, warms QVAC, and links `agg`
@@ -73,7 +73,7 @@ second of `retrying` rather than the session.
 
 ## What the local model is for
 
-Detection stays deterministic. The daemon's symbol index and read-set intersection decide *that*
+Detection stays deterministic. The daemon's symbol index and read-set intersection decide _that_
 `backend` and `payments` collide, with no model involved — that is a hard rule, and tiers 0–2 never
 call one. QVAC covers the two things set intersection cannot produce:
 
@@ -114,17 +114,17 @@ model and fails if the grammar-constrained contract does not parse. Run it after
 
 ## What we changed from the boilerplate
 
-| Boilerplate | Here | Why |
-| --- | --- | --- |
-| `ui/app.js` — a chat transcript | The room view: agents, event feed, negotiation panel | Different product |
-| `lib/inference.js` | `ask(history, responseFormat)` | Structured output for the contract |
-| `workers/qvac.js` | Forwards `responseFormat` to `completion()` | Same |
-| — | `lib/room.js` | Daemon socket client; the boilerplate has no peer state |
-| — | `lib/negotiator.js` | Prompts, parsing, deterministic fallbacks |
-| — | `scripts/bare.mjs`, `scripts/warm.js`, `scripts/negotiate.js` | Self-contained Bare launch; model pre-warm; live prompt check |
-| `app.js`, `workers/main.js` | Unchanged | OTA updates are how the team gets new builds |
-| `bare-runtime` 1.29.4 | `^1.33.4` | `@qvac/inference` needs `bare ^1.30.3`; 1.29.4's semver cannot even parse that range |
-| — | `overrides: { "bare-module": "^7" }` | Bare 1.33.4 bundles bare-module 7; the transitive `^6` shadows it inside a worker thread |
+| Boilerplate                     | Here                                                          | Why                                                                                      |
+| ------------------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `ui/app.js` — a chat transcript | The room view: agents, event feed, negotiation panel          | Different product                                                                        |
+| `lib/inference.js`              | `ask(history, responseFormat)`                                | Structured output for the contract                                                       |
+| `workers/qvac.js`               | Forwards `responseFormat` to `completion()`                   | Same                                                                                     |
+| —                               | `lib/room.js`                                                 | Daemon socket client; the boilerplate has no peer state                                  |
+| —                               | `lib/negotiator.js`                                           | Prompts, parsing, deterministic fallbacks                                                |
+| —                               | `scripts/bare.mjs`, `scripts/warm.js`, `scripts/negotiate.js` | Self-contained Bare launch; model pre-warm; live prompt check                            |
+| `app.js`, `workers/main.js`     | Unchanged                                                     | OTA updates are how the team gets new builds                                             |
+| `bare-runtime` 1.29.4           | `^1.33.4`                                                     | `@qvac/inference` needs `bare ^1.30.3`; 1.29.4's semver cannot even parse that range     |
+| —                               | `overrides: { "bare-module": "^7" }`                          | Bare 1.33.4 bundles bare-module 7; the transitive `^6` shadows it inside a worker thread |
 
 ### If a worker dies with `defaultProtocol.postresolve is not a function`
 
@@ -143,7 +143,7 @@ required — so `CONTRACT_FORMAT` spells both out.
 
 ### Why npm, and why outside the pnpm workspace
 
-`bare-pack` and `bare-build` resolve modules and native addons by *statically* traversing `require()`
+`bare-pack` and `bare-build` resolve modules and native addons by _statically_ traversing `require()`
 and `require.addon.resolve()` calls, which pnpm's symlinked store breaks. `pnpm-workspace.yaml`
 excludes `apps/tui` with `!apps/tui`; this package keeps its own `package-lock.json`. Biome also skips
 it — it is Prettier-formatted, per the Holepunch config the boilerplate ships.
@@ -157,11 +157,20 @@ Staged updates are never auto-applied — <kbd>ctrl+r</kbd> installs, so nothing
 
 ## Speech (QVAC Parler TTS)
 
-`lib/speech/` is a headless speech engine; nothing in the UI uses it yet.
+`lib/speech/` powers the room view's per-agent voice buttons. The first eligible
+local line lazily loads the model; `agg speech-test` warms the same path and
+plays a one-line hardware/audio smoke test before a demo.
 
 - Model `TTS_MINI_V1_EN_PARLER_TTS_Q8_0` (~1.1 GB, downloaded through the QVAC registry on first use) via `@qvac/tts-ggml@0.7.5` and the existing `@qvac/inference@0.18.2` `tts-ggml` plugin.
 - Runs in its own worker (`workers/tts.js`). Metal on Apple Silicon, one retry on CPU.
-- Output rate is pinned to 44100 Hz in the model config (the SDK client does not report it); PCM is wrapped as a temp WAV and played with `/usr/bin/afplay`.
+- Output rate is pinned to 44100 Hz in the model config. PCM crosses the worker boundary as base64-encoded signed 16-bit audio, is wrapped as a temporary WAV, and is played with `/usr/bin/afplay`.
 - Voices come from hashing the session id into a Parler speaker description, so they are stable across restarts.
 - Settings persist to `<storage>/speech.json`: volume 0.8, local agent on, remote agents muted.
-- Tests (`npm test`) use fake engine/player/fs; the real model and audio path are not exercised by them.
+- Only fresh events are considered. Exact `MESSAGE` text and deterministic coordination milestones are eligible; heartbeats, file reads/writes, tool calls, logs, and persona filler are silent.
+- Tests (`npm test`) use fake engine/player/fs. Run `agg speech-test --text "hello"` for the real model and audio path.
+
+The QVAC voice renderer is deliberately invisible: it never appears as a room
+participant. `[♪]` means an agent is speaking, `[▶]` means its voice is
+available, `[×]` means muted/unavailable, and `[!]` reports a speech failure.
+Each laptop enables its own coding agent by default and mutes remote agents, so
+one room message is not spoken by every machine.

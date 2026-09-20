@@ -7,6 +7,8 @@ const { voiceFor } = require('../lib/speech/voices.js')
 const { Settings, DEFAULT_VOLUME } = require('../lib/speech/settings.js')
 const { Player } = require('../lib/speech/player.js')
 const { Speech } = require('../lib/speech/index.js')
+const SpeechEngine = require('../lib/speech/engine.js')
+const { decodePcm } = SpeechEngine
 
 function memfs(files = {}) {
   return {
@@ -103,6 +105,41 @@ test('speech: wav header has the reported sample rate and length', (t) => {
   t.is(wav.readUInt32LE(40), 8, 'data bytes')
   t.is(wav.readInt16LE(44 + 4), -1000)
   t.exception(() => pcmToWav([0], 0), /sample rate/)
+})
+
+test('speech: base64 PCM transport preserves signed 16-bit samples', (t) => {
+  const source = Int16Array.from([-32768, -1, 0, 1, 32767])
+  const encoded = Buffer.from(source.buffer, source.byteOffset, source.byteLength).toString(
+    'base64'
+  )
+  t.alike(Array.from(decodePcm(encoded)), Array.from(source))
+  t.exception(() => decodePcm(''), /invalid PCM/)
+})
+
+test('speech: first synthesis waits until the worker reports ready', async (t) => {
+  const engine = new SpeechEngine()
+  const sent = []
+  engine.ready = () => Promise.resolve()
+  engine.pipe = { write() {} }
+  engine._send = (message) => sent.push(message)
+  const result = engine.synthesize('hello', 'voice')
+  await tick()
+  t.is(sent.length, 0, 'not sent while the model is loading')
+  engine._onmessage(Buffer.from(JSON.stringify({ t: 'ready', gpu: true })))
+  await tick()
+  t.is(sent[0].t, 'speak')
+  const samples = Int16Array.from([1, -2, 3])
+  engine._onmessage(
+    Buffer.from(
+      JSON.stringify({
+        t: 'audio',
+        id: sent[0].id,
+        pcm: Buffer.from(samples.buffer).toString('base64'),
+        sampleRate: 44100
+      })
+    )
+  )
+  t.alike(Array.from((await result).samples), [1, -2, 3])
 })
 
 test('speech: voices are stable and differ across agents', (t) => {

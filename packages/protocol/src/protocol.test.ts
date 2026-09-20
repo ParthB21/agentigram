@@ -52,6 +52,7 @@ const samples: Record<Payload['type'], Payload> = {
     conversationId: 'conversation-1',
     replyToSeq: 3,
     automationDepth: 2,
+    automationTerminal: false,
   },
   COMPLETE_CLAIMED: { type: 'COMPLETE_CLAIMED', summary: 's' },
   LEASE_REQUESTED: { type: 'LEASE_REQUESTED', symbols: [sym], ttlMs: 600000 },

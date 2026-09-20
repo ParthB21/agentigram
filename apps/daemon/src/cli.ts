@@ -20,6 +20,12 @@ import {
 import { DEFAULT_HOOK_TIMEOUT_MS, PRE_TOOL_TIMEOUT_MS, requestIpc } from './ipc.js';
 import { runMcpServer } from './mcp-server.js';
 import { RoomClient } from './room-client.js';
+import { IpcRunnerClient } from './runner/client.js';
+import { createAdapter } from './runner/hosts.js';
+import { ManagedRunner } from './runner/orchestrator.js';
+import { spawnHost } from './runner/spawn-host.js';
+import { RunnerStore } from './runner/store.js';
+import { runtimeKey, runtimePaths } from './runtime.js';
 import { summarise } from './summary.js';
 
 const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
@@ -525,6 +531,77 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         });
       });
     });
+
+  program
+    .command('speech-test')
+    .description('Download if needed, synthesize, and play one QVAC voice line.')
+    .option('--text <sentence>', 'sentence to speak')
+    .action(async (options: { text?: string }) => {
+      const entry = fileURLToPath(new URL('../../tui/scripts/speech-test.js', import.meta.url));
+      const child = spawn(bareBinary(), [entry, ...(options.text ? ['--text', options.text] : [])], {
+        stdio: 'inherit',
+      });
+      await new Promise<void>((resolve, reject) => {
+        child.once('error', (error) => reject(new Error(`could not start speech test: ${error.message}`)));
+        child.once('exit', (code) => {
+          if (code) process.exitCode = code;
+          resolve();
+        });
+      });
+    });
+
+  program
+    .command('run')
+    .description('Run the local Codex or Claude agent and wake it for peer coordination.')
+    .requiredOption('--autonomous', 'explicitly allow unattended managed agent turns')
+    .requiredOption('--prompt <task>', 'initial task for the coding agent')
+    .option('--root <path>', 'repository root', defaultRoot)
+    .option('--new-session', 'discard the persisted host conversation before starting')
+    .action(
+      async (options: {
+        autonomous: boolean;
+        prompt: string;
+        root: string;
+        newSession?: boolean;
+      }) => {
+        if (!options.autonomous) throw new Error('managed runs require --autonomous');
+        const root = resolveRoot(options.root);
+        const state = requiredState(root);
+        if (state.host !== 'codex' && state.host !== 'claude-code') {
+          throw new Error(`managed runs support codex and claude-code, not ${state.host}`);
+        }
+        await waitForDaemon(state);
+        const store = new RunnerStore(
+          runtimePaths(root).base,
+          `${runtimeKey(root)}-${state.roomId}-${state.sessionId}`,
+          state.host,
+        );
+        const runner = new ManagedRunner({
+          root,
+          initialPrompt: options.prompt,
+          newSession: options.newSession,
+          adapter: createAdapter(state.host, { autonomous: true }),
+          client: new IpcRunnerClient(state.socketPath, state.sessionId),
+          store,
+          spawn: spawnHost,
+        });
+        await runner.start();
+        console.log(
+          `Managing ${state.sessionId} with ${state.host}. Waiting for Agentigram messages…`,
+        );
+        await new Promise<void>((resolve) => {
+          let stopping = false;
+          const stop = async () => {
+            if (stopping) return;
+            stopping = true;
+            await runner.stop();
+            resolve();
+          };
+          process.once('SIGINT', stop);
+          process.once('SIGTERM', stop);
+        });
+      },
+    );
 
   program
     .command('log')

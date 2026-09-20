@@ -468,6 +468,7 @@ export class LaptopDaemon {
         conversationId: first.conversationId,
         ...(causedBy !== undefined ? { replyToSeq: causedBy } : {}),
         automationDepth,
+        ...(request.outcome === 'blocked' ? { automationTerminal: true } : {}),
       },
     });
     this.inbox.complete(request.sessionId, request.claimId);
@@ -630,10 +631,11 @@ export class LaptopDaemon {
         ...(speech ? { speech } : {}),
       });
       const routedSessions = routeEvent(this.roomState, event);
+      const wake = shouldWake(event, this.state.sessionId, routedSessions, now);
       if (shouldRouteToInbox(event, this.state.sessionId, routedSessions, now)) {
-        this.inbox.enqueue(this.state.sessionId, event);
+        this.inbox.enqueue(this.state.sessionId, event, wake);
       }
-      if (shouldWake(event, this.state.sessionId, routedSessions, now)) {
+      if (wake) {
         this.broadcast({ t: 'wake', sessionId: this.state.sessionId, seq: event.seq });
       }
     }

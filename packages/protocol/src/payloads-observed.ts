@@ -71,5 +71,7 @@ export const Message = payload('MESSAGE', {
   conversationId: z.string().min(1).max(128).optional(),
   replyToSeq: z.number().int().nonnegative().optional(),
   automationDepth: z.number().int().min(0).max(MAX_AUTOMATION_DEPTH).optional(),
+  /** Visible to humans and hooks, but must not start another managed agent turn. */
+  automationTerminal: z.boolean().optional(),
 });
 export const CompleteClaimed = payload('COMPLETE_CLAIMED', { summary: z.string() });

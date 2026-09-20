@@ -89,4 +89,14 @@ describe('WakeInbox', () => {
     expect(shouldRouteToInbox(atLimit, 'frontend', ['frontend'], now)).toBe(true);
     expect(shouldWake(atLimit, 'frontend', ['frontend'], now)).toBe(false);
   });
+
+  it('keeps terminal messages for hook context without exposing them to a runner claim', () => {
+    const terminal = message(1, 'backend', 'frontend', { automationTerminal: true });
+    const inbox = new WakeInbox(() => 'claim-1');
+    expect(shouldRouteToInbox(terminal, 'frontend', ['frontend'], now)).toBe(true);
+    expect(shouldWake(terminal, 'frontend', ['frontend'], now)).toBe(false);
+    inbox.enqueue('frontend', terminal, false);
+    expect(inbox.claim('frontend')).toBeUndefined();
+    expect(inbox.consume('frontend')).toHaveLength(1);
+  });
 });

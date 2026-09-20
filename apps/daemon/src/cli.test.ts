@@ -19,6 +19,8 @@ describe('agentigram CLI', () => {
       'status',
       'tui',
       'ui',
+      'speech-test',
+      'run',
     ]) {
       expect(help).toContain(cmd);
     }

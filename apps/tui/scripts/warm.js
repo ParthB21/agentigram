@@ -27,7 +27,9 @@ const flag = (name) => {
   return index >= 0 ? argv[index + 1] : undefined
 }
 // A bare first argument stays supported: `npm run warm -- WHISPER_TINY`.
-const positional = argv.find((value) => !value.startsWith('--') && argv[argv.indexOf(value) - 1]?.startsWith('--') !== true)
+const positional = argv.find(
+  (value) => !value.startsWith('--') && argv[argv.indexOf(value) - 1]?.startsWith('--') !== true
+)
 
 const modelName = flag('--model') || positional || 'LLAMA_3_2_1B_INST_Q4_0'
 const modelSrc = flag('--model-src')

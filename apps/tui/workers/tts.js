@@ -10,7 +10,7 @@
 //
 //   out  { t: 'progress', percentage }       model download, 0-100
 //        { t: 'ready', gpu }                 model resident
-//        { t: 'audio', id, samples, sampleRate }   signed 16-bit mono PCM
+//        { t: 'audio', id, pcm, sampleRate }   base64 signed 16-bit mono PCM
 //        { t: 'error', id?, message }
 //        { t: 'closed' }
 const FramedStream = require('framed-stream')
@@ -28,6 +28,7 @@ let sdk = null
 let modelId = null
 let gpu = false
 let closing = null
+let booting = null
 
 function load(useGPU) {
   return sdk.loadModel({
@@ -55,7 +56,7 @@ async function boot() {
     }
   }
   if (!modelId) modelId = await load(false)
-  send({ t: 'ready', gpu })
+  if (!closing) send({ t: 'ready', gpu })
 }
 
 async function speak(id, text, description) {
@@ -63,9 +64,19 @@ async function speak(id, text, description) {
     const run = sdk.textToSpeech({ modelId, text, stream: false, description })
     const samples = await run.buffer
     await run.done
-    send({ t: 'audio', id, samples, sampleRate: SAMPLE_RATE })
+    if (!Array.isArray(samples) || samples.length === 0) {
+      throw new Error('QVAC returned no PCM samples')
+    }
+    if (samples.some((sample) => !Number.isFinite(sample))) {
+      throw new Error('QVAC returned non-numeric PCM samples')
+    }
+    const pcm = Int16Array.from(samples, (sample) =>
+      Math.max(-32768, Math.min(32767, Math.round(Number(sample))))
+    )
+    const bytes = Buffer.from(pcm.buffer, pcm.byteOffset, pcm.byteLength)
+    send({ t: 'audio', id, pcm: bytes.toString('base64'), sampleRate: SAMPLE_RATE })
   } catch (err) {
-    send({ t: 'error', id, message: err.message })
+    send({ t: 'error', id, message: err?.message || String(err) })
   }
 }
 
@@ -73,6 +84,7 @@ function shutdown() {
   if (closing) return closing
   closing = (async () => {
     try {
+      await booting?.catch(() => {})
       if (sdk) {
         if (modelId) await sdk.unloadModel({ modelId })
         await sdk.close()
@@ -95,4 +107,7 @@ pipe.on('data', (data) => {
   else if (msg.t === 'close') shutdown()
 })
 
-boot().catch((err) => send({ t: 'error', message: err.message }))
+booting = boot()
+booting.catch((err) => {
+  if (!closing) send({ t: 'error', message: err?.message || String(err) })
+})

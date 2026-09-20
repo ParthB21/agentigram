@@ -25,6 +25,7 @@ export type InboxItem = {
   text: string;
   conversationId: string;
   automationDepth: number;
+  wakeEligible: boolean;
 };
 
 export type InboxClaim = {
@@ -66,7 +67,8 @@ export function shouldWake(
   return (
     shouldRouteToInbox(event, localSessionId, routedSessions, now) &&
     (event.payload.type !== 'MESSAGE' ||
-      (event.payload.automationDepth ?? 0) < MAX_AUTOMATION_DEPTH)
+      ((event.payload.automationDepth ?? 0) < MAX_AUTOMATION_DEPTH &&
+        event.payload.automationTerminal !== true))
   );
 }
 
@@ -78,7 +80,7 @@ export class WakeInbox {
 
   constructor(private readonly newClaimId: ClaimIdFactory = () => crypto.randomUUID()) {}
 
-  enqueue(sessionId: string, event: Event): InboxItem {
+  enqueue(sessionId: string, event: Event, wakeEligible = true): InboxItem {
     const payload = event.payload;
     const item: InboxItem = {
       seq: event.seq,
@@ -88,6 +90,7 @@ export class WakeInbox {
       text: agentContextText(event),
       conversationId: payload.type === 'MESSAGE' ? (payload.conversationId ?? event.id) : event.id,
       automationDepth: payload.type === 'MESSAGE' ? (payload.automationDepth ?? 0) : 0,
+      wakeEligible,
     };
     const current = this.pending.get(sessionId) ?? [];
     current.push(item);
@@ -97,10 +100,13 @@ export class WakeInbox {
 
   claim(sessionId: string): InboxClaim | undefined {
     const current = this.pending.get(sessionId);
-    const first = current?.[0];
+    const first = current?.find((item) => item.wakeEligible);
     if (!current || !first) return undefined;
     const items = current.filter(
-      (item) => item.from === first.from && item.conversationId === first.conversationId,
+      (item) =>
+        item.wakeEligible &&
+        item.from === first.from &&
+        item.conversationId === first.conversationId,
     );
     const selected = new Set(items.map((item) => item.seq));
     const remaining = current.filter((item) => !selected.has(item.seq));

@@ -75,6 +75,8 @@ Reference: `openagents-develop/` (OpenAgents, Apache 2.0). We took architecture 
 - 2026-09-19 · part 1 · Worker ingest also accepts `COLLISION` and `CONTRACT_COMPILED` · spec says workers post collisions (tier 3) and compile results; the prompt's list named only verification results.
 - 2026-09-19 · part 1 · HELLO secret and ingest secret are separate (`ROOM_SECRET`, `WORKER_SECRET`) · a leaked daemon token must not allow posting CI or spec-merge results.
 - 2026-09-19 · part 1 · Snapshot every 100 events, keeping only the latest · bounds wake-up replay; older snapshots have no use.
+- 2026-09-20 · half 1 · Each laptop renders only its local coding agent's fresh speech by default; QVAC stays invisible and remote voices are opt-in · prevents duplicate room audio while preserving per-agent attribution.
+- 2026-09-20 · half 1 · Continuous Codex/Claude wakeups require the explicit `agg run --autonomous` process · keeps unattended execution opt-in and independently stoppable from the room view.
 - 2026-09-19 · part 1 · Events are capped at 64 KiB (ingest and SUBMIT) and frames at 128 KiB · untrusted input.
 - 2026-09-19 · part 1 · Not done in M1: a timeout for sockets that never send HELLO; the `/export` endpoint (M4); alarms (M2).
 - 2026-09-19 · part 1 · `apps/coordinator` tsconfig loads `@cloudflare/workers-types` alongside `node` · needed for `DurableObject` and `WebSocketPair`; no type clashes appeared.

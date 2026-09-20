@@ -146,7 +146,7 @@ class Speech extends EventEmitter {
       if (!current.cancelled) this.emit('finished', { seq: item.seq, speaker: item.speaker })
     } catch (err) {
       // A cancelled line is an outcome, not a failure.
-      if (!err?.cancelled && !current.cancelled) this.emit('error', err)
+      if (!err?.cancelled && !current.cancelled) this.emit('error', err, item.speaker)
     } finally {
       // An interrupted line was started; say it is over so the UI clears it.
       if (current.cancelled && current.playback) {
