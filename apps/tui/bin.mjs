@@ -62,6 +62,7 @@ const room = new Room({ socket })
 
 const ui = new UI({ inference, room, model, version: pkg.version })
 const program = new Program(ui, { mouse: true })
+let inferenceStarted = false
 
 // ── bridge ────────────────────────────────────────────────────────────────
 //
@@ -74,7 +75,13 @@ inference.on('end', (id, stopReason) => program.send({ type: 'qvac.end', id, sto
 inference.on('answer-error', (id, message) => repaint({ type: 'qvac.error', id, message }))
 inference.on('error', (err) => repaint({ type: 'qvac.error', message: err.message }))
 
-room.on('state', (state) => program.send({ type: 'room.state', state }))
+room.on('state', (state) => {
+  program.send({ type: 'room.state', state })
+  if (state.mode === 'authority' && !inferenceStarted) {
+    inferenceStarted = true
+    inference.ready().catch((err) => program.send({ type: 'qvac.error', message: err.message }))
+  }
+})
 room.on('event', (frame) => program.send({ type: 'room.event', frame }))
 room.on('status', (status) => program.send({ type: 'room.status', status }))
 room.on('warn', (text) => program.send({ type: 'room.warn', text }))
@@ -100,7 +107,9 @@ inference.on('loaded', (loadedModel, loadedCtx) => {
 // ── lifecycle ─────────────────────────────────────────────────────────────
 
 function teardown() {
-  return Promise.allSettled([inference.close(), room.close()])
+  const resources = [room.close()]
+  if (inferenceStarted) resources.push(inference.close())
+  return Promise.allSettled(resources)
 }
 
 async function shutdown(code = 0) {
@@ -115,12 +124,10 @@ process.on('SIGQUIT', () => shutdown(131))
 process.on('SIGTERM', () => shutdown(143))
 
 try {
-  // Kick both off without waiting — the TUI paints immediately and fills in as
-  // the room and the model arrive. The room is the one that matters: a laptop
-  // whose weights are still downloading still shows every collision, just with
-  // deterministic wording.
+  // The room decides this laptop's role. Only an authority starts QVAC; peers
+  // remain lightweight room participants. The authority-only model is the
+  // boundary for a future orchestrator, not an autonomous orchestrator yet.
   room.ready().catch((err) => program.send({ type: 'room.warn', text: err.message }))
-  inference.ready().catch((err) => program.send({ type: 'qvac.error', message: err.message }))
 
   await program.run()
 } finally {

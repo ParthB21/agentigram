@@ -3,8 +3,8 @@
 **Owner:** Half 1 / Part 2 · **Runtime:** Bare (not Node) · **Installs with npm, not pnpm**
 
 The sovereign room view. A [Pear](https://docs.pears.com) terminal app that shows every agent in the
-room, the collisions between them, and negotiates those collisions with a model running on this
-laptop — no API key, no network round-trip, no cloud.
+room and the collisions between them. The authority can negotiate those collisions with a local
+model — no API key, no network round-trip, no cloud. Peers do not load the model.
 
 Forked from [`holepunchto/hello-pear-qvac-tui`](https://github.com/holepunchto/hello-pear-qvac-tui)
 (Apache-2.0). See [What we changed](#what-we-changed-from-the-boilerplate).

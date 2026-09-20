@@ -232,6 +232,27 @@ test('shows the room before the model has loaded', async (t) => {
   t.ok(view.includes('idle'), 'one that has gone quiet says idle')
 })
 
+test('a peer never shows or accepts local model state', async (t) => {
+  const inference = fakeInference()
+  const peerState = { ...STATE, mode: 'peer' }
+  let app = await drive(new App({ inference, room: fakeRoom() }), [
+    resize,
+    { type: 'room.status', status: 'connected' },
+    { type: 'room.state', state: peerState },
+    { type: 'qvac.progress', percentage: 75 },
+    loaded
+  ])
+  const view = screen(app)
+  t.is(app.phase, 'disabled')
+  t.absent(view.includes('LLAMA'), 'peer header has no model name')
+  t.absent(view.includes('loading 75%'), 'peer header has no model progress')
+  t.absent(view.includes('loaded on this machine'), 'peer feed has no model notice')
+  t.absent(view.includes('[r] redraft'), 'peer cannot invoke the local model')
+  t.ok(view.includes('peer') && view.includes('daemon ✓'), 'room role and daemon remain visible')
+  app = await drive(app, [keyMsg('r')])
+  t.is(inference.calls.asked.length, 0, 'peer redraft input never reaches inference')
+})
+
 test('an agent stops advertising a task once it goes quiet', async (t) => {
   const working = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
     resize,

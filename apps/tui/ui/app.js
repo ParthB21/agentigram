@@ -65,8 +65,9 @@ class App {
     this.height = 24
 
     // 'loading' -> model downloading; 'ready' -> it can negotiate;
-    // 'failed' -> it never loaded, so the panel shows deterministic text only.
+    // 'failed' -> it never loaded; 'disabled' -> this laptop is a peer.
     this.phase = 'loading'
+    this.modelAccess = 'pending'
     this.percentage = 0
 
     this.link = 'connecting'
@@ -142,6 +143,8 @@ class App {
       case 'room.state':
         this.state = msg.state
         this.roomId = msg.state?.roomId || this.roomId
+        this.modelAccess = msg.state?.mode === 'authority' ? 'authority' : 'peer'
+        if (this.modelAccess === 'peer') this.phase = 'disabled'
         // Seed the local session from the room state if not already known.
         if (!this.localSession && msg.state?.sessionId) {
           this.localSession = msg.state.sessionId
@@ -172,10 +175,12 @@ class App {
       // ── the model ─────────────────────────────────────────────────────────
 
       case 'qvac.progress':
+        if (this.modelAccess === 'peer') return [this, null]
         this.percentage = msg.percentage
         return [this, null]
 
       case 'qvac.loaded':
+        if (this.modelAccess === 'peer') return [this, null]
         this.phase = 'ready'
         this.model = msg.model || this.model
         this._note(`${this.model} loaded on this machine — no API key, no network`)
@@ -202,6 +207,7 @@ class App {
         return this._finishStep()
 
       case 'qvac.error':
+        if (this.modelAccess === 'peer') return [this, null]
         if (msg.id !== undefined && msg.id !== this.askId) return [this, null]
         this._note(`model error: ${msg.message}`)
         if (this.phase === 'loading') {
@@ -303,7 +309,9 @@ class App {
       this._note(`dismissed the ${this.current.collision.tier} collision`)
       return this._advance()
     }
-    if (pressed === 'r' && ready) return this._explain(this.current)
+    if (pressed === 'r' && ready && this.modelAccess === 'authority') {
+      return this._explain(this.current)
+    }
 
     // ── speech keyboard controls ───────────────────────────────────────────
     const agents = this.state?.agents || []
@@ -600,6 +608,7 @@ class App {
       this.link === 'connected'
         ? style().foreground(OK).render('daemon ✓')
         : style().foreground(DANGER).render(`daemon ${this.link}`)
+    if (state.mode !== 'authority') return fit(`${left}${mode}  ${link}`, this.width)
     const engine =
       this.phase === 'ready'
         ? style().foreground(OK).render(`${this.model} ✓`)
@@ -721,7 +730,11 @@ class App {
       phase === 'ready'
         ? style()
             .foreground(ACCENT)
-            .render('  [enter] send proposal   [r] redraft   [x] dismiss') +
+            .render(
+              this.modelAccess === 'authority'
+                ? '  [enter] send proposal   [r] redraft   [x] dismiss'
+                : '  [enter] send proposal   [x] dismiss'
+            ) +
           (generated ? '' : style().foreground(MUTED).render('   (deterministic draft)'))
         : phase === 'sending'
           ? `  ${this.spinner.view()} sending…`
