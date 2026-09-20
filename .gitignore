@@ -18,3 +18,10 @@ openagents-develop/
 
 # demo-repo incremental typecheck cache
 .cache
+
+# This is a pnpm workspace. `npm install` at the root resolves only the root
+# devDependencies and links no workspace package, which leaves the daemon
+# failing with "Cannot find package '@agentigram/p2p'" while looking installed.
+# apps/tui keeps its own package-lock.json on purpose — it is a Bare/Pear app
+# and installs with npm.
+/package-lock.json

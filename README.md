@@ -43,7 +43,12 @@ See [`apps/tui/README.md`](apps/tui/README.md).
 
 ## Quick start
 
-Needs Node 22 (`.nvmrc`). If `pnpm` is not installed, use the pinned version through `npx`:
+Needs Node 22 (`.nvmrc`). If `pnpm` is not installed, use the pinned version through `npx`.
+
+**Two installs, and both are required.** `pnpm` at the root wires the workspace packages;
+`npm` inside `apps/tui` installs the Bare/Pear app. Never run `npm install` at the root — it
+resolves the root devDependencies, links no workspace package, and leaves the daemon failing with
+`Cannot find package '@agentigram/p2p'` while looking like it worked.
 
 ```bash
 npx pnpm@10.34.5 install
@@ -51,7 +56,7 @@ npx pnpm@10.34.5 typecheck
 npx pnpm@10.34.5 test
 
 # The Pear app installs with npm, not pnpm (bare-pack needs a real node_modules tree).
-# `warm` downloads ~0.8 GB of model weights once per machine — do this before the demo.
+# `warm` downloads ~0.74 GB of model weights once per machine — do this before the demo.
 cd apps/tui && npm install && npm run warm && npm test && cd ../..
 
 # One-laptop P2P smoke test: 4 peers, a lease denial and a tier-1 collision
