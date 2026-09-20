@@ -46,6 +46,22 @@ function fakeRoom({ fail = false } = {}) {
   }
 }
 
+/**
+ * Fake speech controller that records calls and can simulate controller events.
+ * Mirrors the Speech interface from Part 2.
+ */
+function fakeSpeech() {
+  const calls = { enqueued: [], toggled: [], muted: [], cancelled: 0, closed: 0 }
+  return {
+    calls,
+    enqueue(item) { calls.enqueued.push(item) },
+    toggle(sessionId) { calls.toggled.push(sessionId) },
+    async mute(sessionId, muted) { calls.muted.push({ sessionId, muted }) },
+    cancel() { calls.cancelled++ },
+    close() { calls.closed++ }
+  }
+}
+
 // Run Cmds the way the Program would, including the async ones.
 async function drive(app, msgs) {
   for (const msg of msgs) {
@@ -77,6 +93,7 @@ const COLLISION = {
 const STATE = {
   roomId: 'hackathon',
   mode: 'authority',
+  sessionId: 'backend',
   agents: [
     {
       sessionId: 'backend',
@@ -132,7 +149,7 @@ test('a period inside a symbol name does not end the sentence', (t) => {
   )
 })
 
-test('the tokenizer’s spaced symbol names are repaired', (t) => {
+test('the tokenizer spaced symbol names are repaired', (t) => {
   t.ok(
     tidyExplanation('The writer is changing User. id in the backend.', COLLISION).includes(
       'User.id'
@@ -192,7 +209,7 @@ test('a filler constraint is replaced, since "none" inverts the meaning', (t) =>
   const filler =
     '{"symbol":"User.id","kind":"type","before":"number","after":"string","constraint":"none"}'
   const { contract, generated } = parseContract(filler, COLLISION)
-  t.ok(generated, 'the rest of the contract is still the model’s')
+  t.ok(generated, 'the rest of the contract is still the model generated')
   t.ok(contract.constraint.includes('payments'), 'but the constraint is the deterministic one')
 })
 
@@ -430,4 +447,306 @@ test('the view never exceeds the terminal height', async (t) => {
       t.ok(style.stripAnsi(row).length <= 100, 'no row overflows the width')
     }
   }
+})
+
+// ── Part 3: speech controls ──────────────────────────────────────────────────
+
+test('agent rows show speech buttons instead of circle indicators', async (t) => {
+  const app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: { ...STATE, collisions: [] } }
+  ])
+  const view = screen(app)
+  // No old-style circle dots.
+  t.absent(view.includes('●'), 'no filled circle')
+  t.absent(view.includes('◐'), 'no half circle')
+  t.absent(view.includes('○'), 'no empty circle')
+  // Speech buttons are present.
+  t.ok(view.includes('[♪]') || view.includes('[×]'), 'speech button present')
+})
+
+test('local agent starts enabled (♪), remote agents start muted (×)', async (t) => {
+  const app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [resize, { type: 'room.state', state: { ...STATE, collisions: [] } }]
+  )
+  const view = screen(app)
+  // backend is local -> enabled [♪]
+  t.ok(view.includes('[♪]'), 'local agent shows enabled button')
+  // payments is remote -> muted [×]
+  t.ok(view.includes('[×]'), 'remote agent shows muted button')
+})
+
+test('local session is seeded from room.state.sessionId when not provided', async (t) => {
+  const app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: { ...STATE, sessionId: 'backend', collisions: [] } }
+  ])
+  t.is(app.localSession, 'backend', 'local session set from state')
+  // backend row should be enabled
+  t.ok(screen(app).includes('[♪]'), 'local agent shows enabled button')
+})
+
+test('speech.started marks the speaking session and only that row shows [▶]', async (t) => {
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.started', sessionId: 'backend' }
+    ]
+  )
+  const view = screen(app)
+  t.ok(view.includes('[▶]'), 'speaking session shows play button')
+  t.is(app.speakingSession, 'backend')
+})
+
+test('speech.finished clears the speaking state', async (t) => {
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.started', sessionId: 'backend' },
+      { type: 'speech.finished', sessionId: 'backend' }
+    ]
+  )
+  t.is(app.speakingSession, null)
+  // Back to idle enabled state for local agent
+  t.ok(screen(app).includes('[♪]'), 'back to enabled idle after finished')
+})
+
+test('speech.finished for a different session does not clear the active speaker', async (t) => {
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.started', sessionId: 'backend' },
+      { type: 'speech.finished', sessionId: 'payments' }
+    ]
+  )
+  t.is(app.speakingSession, 'backend', 'speaking session unchanged for unrelated finish')
+})
+
+test('speaking a session never highlights a different row', async (t) => {
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.started', sessionId: 'payments' }
+    ]
+  )
+  t.is(app.speakingSession, 'payments')
+  // The view should show [▶] for payments but backend should not have [▶].
+  // We can't easily check per-row here, but the overall count of [▶] should be 1.
+  const plain = screen(app)
+  const playCount = (plain.match(/\[▶\]/g) || []).length
+  t.is(playCount, 1, 'exactly one row shows playing')
+})
+
+test('speech.error marks speech unavailable and shows [!]', async (t) => {
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.error', message: 'model failed to load' }
+    ]
+  )
+  t.ok(app.speechUnavailable, 'speech marked unavailable')
+  const view = screen(app)
+  t.ok(view.includes('[!]'), 'unavailable button shown')
+  t.absent(view.includes('[♪]'), 'no enabled button when unavailable')
+  t.absent(view.includes('[×]'), 'no muted button when unavailable')
+  t.ok(view.includes('speech error'), 'error note added to feed')
+})
+
+test('speech.muted syncs the mute map', async (t) => {
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.muted', sessionId: 'backend', muted: true }
+    ]
+  )
+  t.is(app.speechMuted.get('backend'), true, 'backend muted via event')
+})
+
+test('s key toggles speech for the selected agent and calls speech.mute', async (t) => {
+  const speech = fakeSpeech()
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), speech, localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } }
+    ]
+  )
+  // selectedAgent = 0 = 'backend', which starts enabled (unmuted).
+  app = await drive(app, [keyMsg('s')])
+  // Should now be muted.
+  t.ok(app.speechMuted.get('backend'), 'backend muted after s key')
+  t.is(speech.calls.muted.length, 1, 'speech.mute called')
+  t.is(speech.calls.muted[0].sessionId, 'backend')
+  t.is(speech.calls.muted[0].muted, true)
+})
+
+test('s key toggles back from muted to enabled', async (t) => {
+  const speech = fakeSpeech()
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), speech, localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } }
+    ]
+  )
+  // Toggle once (enable->mute), twice (mute->enable).
+  app = await drive(app, [keyMsg('s'), keyMsg('s')])
+  t.is(app.speechMuted.get('backend'), false, 'backend re-enabled after second toggle')
+  t.is(speech.calls.muted.length, 2)
+  t.is(speech.calls.muted[1].muted, false)
+})
+
+test('arrow keys change the selected agent', async (t) => {
+  let app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: { ...STATE, collisions: [] } }
+  ])
+  t.is(app.selectedAgent, 0, 'starts on first agent')
+
+  app = await drive(app, [keyMsg('down')])
+  t.is(app.selectedAgent, 1, 'down moves to second agent')
+
+  app = await drive(app, [keyMsg('down')])
+  t.is(app.selectedAgent, 1, 'does not go past last agent')
+
+  app = await drive(app, [keyMsg('up')])
+  t.is(app.selectedAgent, 0, 'up goes back to first')
+
+  app = await drive(app, [keyMsg('up')])
+  t.is(app.selectedAgent, 0, 'does not go past first agent')
+})
+
+test('s on a remote agent (arrow-selected) toggles its mute state', async (t) => {
+  const speech = fakeSpeech()
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), speech, localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      keyMsg('down') // select payments (index 1)
+    ]
+  )
+  t.is(app.selectedAgent, 1)
+  // payments starts muted (remote); toggling should unmute it.
+  app = await drive(app, [keyMsg('s')])
+  t.is(app.speechMuted.get('payments'), false, 'payments unmuted')
+  t.is(speech.calls.muted[0].sessionId, 'payments')
+  t.is(speech.calls.muted[0].muted, false)
+})
+
+test('mouse click on speech button hitbox toggles that session', async (t) => {
+  const speech = fakeSpeech()
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), speech, localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } }
+    ]
+  )
+  // Force a view render to populate hitboxes.
+  app.view()
+  const hitbox = app._speechHitboxes.find((h) => h.sessionId === 'backend')
+  t.ok(hitbox, 'hitbox registered for backend')
+
+  app = await drive(app, [
+    { type: 'mouse', action: 'click', x: hitbox.col, y: hitbox.row, button: 'left' }
+  ])
+  t.ok(app.speechMuted.get('backend'), 'backend muted after click')
+  t.is(speech.calls.muted.length, 1)
+})
+
+test('mouse click outside hitboxes does not toggle anything', async (t) => {
+  const speech = fakeSpeech()
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), speech, localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } }
+    ]
+  )
+  app.view()
+  app = await drive(app, [
+    { type: 'mouse', action: 'click', x: 0, y: 0, button: 'left' }
+  ])
+  t.is(speech.calls.muted.length, 0, 'no toggle on miss')
+})
+
+test('speech error does not interrupt messaging or negotiation', async (t) => {
+  const room = fakeRoom()
+  let app = await drive(new App({ inference: fakeInference(), room }), [
+    resize,
+    loaded,
+    { type: 'room.state', state: STATE },
+    { type: 'speech.error', message: 'afplay not found' }
+  ])
+  // Collision panel should still work.
+  t.ok(app.current, 'collision panel unaffected')
+  app = await drive(app, [keyMsg('x')])
+  t.is(app.current, null, 'can still dismiss')
+})
+
+test('footer shows [s] voice hint', async (t) => {
+  const app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: { ...STATE, collisions: [] } }
+  ])
+  t.ok(screen(app).includes('[s] voice'), 'footer has speech hint')
+})
+
+test('view height and width are preserved with speech controls', async (t) => {
+  // Width must be >= 80 to avoid the pre-existing header overflow at very
+  // narrow terminals (same constraint as the original view height test which
+  // used width=100). The purpose here is to confirm speech controls add no
+  // extra rows and do not themselves overflow the terminal.
+  for (const [width, height] of [[80, 12], [100, 20], [100, 30], [200, 60]]) {
+    const app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+      { type: 'resize', width, height },
+      loaded,
+      { type: 'room.state', state: STATE }
+    ])
+    const rows = screen(app).split('\n')
+    t.ok(rows.length <= height, `${rows.length} rows fits in ${height}`)
+    for (const row of rows) {
+      t.ok(style.stripAnsi(row).length <= width, `row fits in ${width}`)
+    }
+  }
+})
+
+test('speech button is preserved at narrow widths while host text truncates', async (t) => {
+  const app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [
+      { type: 'resize', width: 40, height: 24 },
+      { type: 'room.state', state: { ...STATE, collisions: [] } }
+    ]
+  )
+  const view = screen(app)
+  // At 40 columns, the speech button should still appear.
+  t.ok(view.includes('[♪]') || view.includes('[×]') || view.includes('[!]'), 'button preserved at 40 cols')
+})
+
+test('speech.ready clears the unavailable flag', async (t) => {
+  let app = await drive(
+    new App({ inference: fakeInference(), room: fakeRoom(), localSession: 'backend' }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.error', message: 'init failed' },
+      { type: 'speech.ready' }
+    ]
+  )
+  t.is(app.speechUnavailable, false, 'unavailable cleared by speech.ready')
 })

@@ -27,6 +27,7 @@ const WARN = '#F7B955'
 const DANGER = '#FF6B6B'
 const OK = '#43E97B'
 const MUTED = '#6C7A89'
+const SPEAKING = '#5BC8FF'
 
 const MIN_WIDTH = 40
 const MIN_HEIGHT = 12
@@ -41,13 +42,24 @@ const FOOTER_H = 2
 const PANEL_H = 6
 const PANEL_MIN_H = 4
 
+// ── speech button glyphs ──────────────────────────────────────────────────
+const SPEECH_IDLE = '[♪]'
+const SPEECH_PLAYING = '[▶]'
+const SPEECH_MUTED = '[×]'
+const SPEECH_UNAVAILABLE = '[!]'
+const SPEECH_BTN_WIDTH = 3 // visible characters for the bracket+glyph+bracket
+
 class App {
-  constructor({ inference, room, model, version, roomId } = {}) {
+  constructor({ inference, room, speech, model, version, roomId, localSession } = {}) {
     this.inference = inference || null
     this.room = room || null
+    /** Speech controller from Part 2. May be null while unavailable. */
+    this.speech = speech || null
     this.model = model || 'local model'
     this.version = version || '0.0.0'
     this.roomId = roomId || 'room'
+    /** The session name of this laptop's agent. Set after the first room.state. */
+    this.localSession = localSession || null
 
     this.width = 80
     this.height = 24
@@ -72,6 +84,33 @@ class App {
     this.spinner = spinner.create({ frames: spinner.dots, fps: 12 })
     this.body = viewport.create({ width: 0, height: 8 })
     this.follow = true
+
+    // ── speech state ──────────────────────────────────────────────────────
+    /**
+     * Per-session mute map. true = muted, false/absent = enabled.
+     * Local agent starts enabled; all others start muted.
+     */
+    this.speechMuted = new Map()
+    /** The sessionId whose line is currently being spoken. */
+    this.speakingSession = null
+    /**
+     * Whether the Speech controller has errored out irrecoverably.
+     * A single model error sets this; messaging continues unaffected.
+     */
+    this.speechUnavailable = false
+
+    // ── keyboard selection ────────────────────────────────────────────────
+    /** Index of the selected agent row (for keyboard 's' toggle). */
+    this.selectedAgent = 0
+
+    // ── hitboxes ──────────────────────────────────────────────────────────
+    /**
+     * Array of { sessionId, col, row } for each rendered speech button,
+     * populated by _agents() during view generation and used by mouse handler.
+     */
+    this._speechHitboxes = []
+    /** Absolute terminal row at which the first agent line is rendered. */
+    this._agentRowStart = HEADER_H
   }
 
   init() {
@@ -103,6 +142,10 @@ class App {
       case 'room.state':
         this.state = msg.state
         this.roomId = msg.state?.roomId || this.roomId
+        // Seed the local session from the room state if not already known.
+        if (!this.localSession && msg.state?.sessionId) {
+          this.localSession = msg.state.sessionId
+        }
         return this._intake()
 
       case 'room.event':
@@ -171,13 +214,55 @@ class App {
         this._note(msg.text)
         return [this, null]
 
-      case 'mouse':
-        if (msg.action === 'wheel') {
-          if (msg.button === 'wheelup') this.body.scrollUp(3)
-          else this.body.scrollDown(3)
-          this.follow = this.body.atBottom
-        }
+      // ── speech controller events ──────────────────────────────────────────
+      // These come from Part 2's Speech controller forwarded through bin.mjs.
+      // The UI only updates visual state — it never calls TTS APIs itself.
+
+      case 'speech.progress':
+        // Model download progress; no visual change needed in the agent rows.
         return [this, null]
+
+      case 'speech.ready':
+        this.speechUnavailable = false
+        this._layout()
+        return [this, null]
+
+      case 'speech.queued':
+        // A line is waiting; no special indicator needed.
+        return [this, null]
+
+      case 'speech.started':
+        // msg.sessionId: whose voice is now playing.
+        this.speakingSession = msg.sessionId || null
+        this._layout()
+        return [this, null]
+
+      case 'speech.finished':
+        if (this.speakingSession === (msg.sessionId || null)) {
+          this.speakingSession = null
+        }
+        this._layout()
+        return [this, null]
+
+      case 'speech.muted':
+        // The controller confirmed a mute change; sync our map.
+        if (msg.sessionId) {
+          this.speechMuted.set(msg.sessionId, !!msg.muted)
+        }
+        this._layout()
+        return [this, null]
+
+      case 'speech.error':
+        this._note(`speech error: ${msg.message}`)
+        this.speechUnavailable = true
+        this.speakingSession = null
+        this._layout()
+        return [this, null]
+
+      // ── input ─────────────────────────────────────────────────────────────
+
+      case 'mouse':
+        return this._mouse(msg)
 
       case 'key':
         return this._key(msg)
@@ -185,6 +270,26 @@ class App {
       default:
         return [this, null]
     }
+  }
+
+  _mouse(msg) {
+    if (msg.action === 'wheel') {
+      if (msg.button === 'wheelup') this.body.scrollUp(3)
+      else this.body.scrollDown(3)
+      this.follow = this.body.atBottom
+      return [this, null]
+    }
+
+    if (msg.action !== 'click' && msg.action !== 'release') return [this, null]
+    if (msg.action === 'release') return [this, null]
+
+    // Check whether the click landed on a speech button hitbox.
+    for (const hb of this._speechHitboxes) {
+      if (msg.y === hb.row && msg.x >= hb.col && msg.x < hb.col + SPEECH_BTN_WIDTH) {
+        return this._toggleSpeech(hb.sessionId)
+      }
+    }
+    return [this, null]
   }
 
   _key(msg) {
@@ -198,7 +303,80 @@ class App {
       return this._advance()
     }
     if (pressed === 'r' && ready) return this._explain(this.current)
+
+    // ── speech keyboard controls ───────────────────────────────────────────
+    const agents = this.state?.agents || []
+    if (pressed === 'up' || pressed === 'k') {
+      this.selectedAgent = Math.max(0, this.selectedAgent - 1)
+      this._layout()
+      return [this, null]
+    }
+    if (pressed === 'down' || pressed === 'j') {
+      this.selectedAgent = Math.min(Math.max(0, agents.length - 1), this.selectedAgent + 1)
+      this._layout()
+      return [this, null]
+    }
+    if (pressed === 's') {
+      const agent = agents[this.selectedAgent]
+      if (agent) return this._toggleSpeech(agent.sessionId)
+    }
+
     return [this, null]
+  }
+
+  // ── speech helpers ────────────────────────────────────────────────────────
+
+  /**
+   * Toggle the mute state for a session and tell the speech controller.
+   * Local agent defaults to enabled (unmuted); remote agents to muted.
+   */
+  _toggleSpeech(sessionId) {
+    const currentlyMuted = this._isMuted(sessionId)
+    this.speechMuted.set(sessionId, !currentlyMuted)
+    this._layout()
+    // Forward to the Part 2 speech controller if available.
+    if (this.speech) {
+      return [
+        this,
+        async () => {
+          try {
+            await this.speech.mute(sessionId, !currentlyMuted)
+          } catch (_) {
+            // Speech errors must not break messaging.
+          }
+          return null
+        }
+      ]
+    }
+    return [this, null]
+  }
+
+  /**
+   * Whether a session's speech is currently muted.
+   * Local agent defaults to unmuted; everyone else defaults to muted.
+   */
+  _isMuted(sessionId) {
+    if (this.speechMuted.has(sessionId)) return this.speechMuted.get(sessionId)
+    // Default: local agent enabled, remote agents muted.
+    return sessionId !== this.localSession
+  }
+
+  /**
+   * Render the speech button for a given session.
+   * Returns { text, col } where col is the visible column offset from the
+   * start of the row (used by hitbox registration in _agents()).
+   */
+  _speechButton(sessionId) {
+    if (this.speechUnavailable) {
+      return style().foreground(DANGER).render(SPEECH_UNAVAILABLE)
+    }
+    if (this.speakingSession === sessionId) {
+      return style().foreground(SPEAKING).render(SPEECH_PLAYING)
+    }
+    if (this._isMuted(sessionId)) {
+      return style().foreground(MUTED).render(SPEECH_MUTED)
+    }
+    return style().foreground(OK).render(SPEECH_IDLE)
   }
 
   // ── the negotiation ──────────────────────────────────────────────────────
@@ -396,6 +574,10 @@ class App {
   // ── view ─────────────────────────────────────────────────────────────────
 
   view() {
+    // Reset hitboxes on every render so stale rows are not clicked.
+    this._speechHitboxes = []
+    this._agentRowStart = HEADER_H
+
     const rows = [this._header(), rule(this.width)]
     rows.push(...this._agents())
     rows.push(...take(this.body.view().split('\n'), this.bodyRows))
@@ -429,6 +611,15 @@ class App {
     return fit(`${left}${mode}  ${link}  ${engine}`, this.width)
   }
 
+  /**
+   * Render agent rows and register speech button hitboxes.
+   *
+   * Row format (per the plan): `  session · host/model · [btn] · current work`
+   * - No circle prefix.
+   * - Speech button is `[♪]`, `[▶]`, `[×]` or `[!]`.
+   * - Color is secondary: cyan for speaking, OK for enabled, muted grey, red fail.
+   * - At narrow widths the button is preserved; host/activity text truncates first.
+   */
   _agents() {
     const agents = (this.state?.agents || []).slice(0, this.agentRows)
     if (agents.length === 0) {
@@ -437,32 +628,71 @@ class App {
     const leases = this.state?.leases || []
     const activity = this.state?.activity || {}
     const presence = this.state?.presence || {}
-    return agents.map((agent) => {
+
+    return agents.map((agent, idx) => {
       const held = leases.filter((lease) => lease.sessionId === agent.sessionId).length
       // A laptop that was closed never sends SessionEnd; no heartbeat is how
       // you know it is gone rather than thinking.
       const here = presence[agent.sessionId] || 'live'
       const busy = here === 'live' ? activity[agent.sessionId] : undefined
-      // Working agents are green and say what they are doing; one that has gone
-      // quiet says so rather than advertising a task it finished long ago.
-      const dot =
-        agent.status === 'ended'
-          ? style().foreground(MUTED).render('○')
-          : busy
-            ? style().foreground(OK).render('●')
-            : style().foreground(MUTED).render('◐')
-      const name = pad(agent.sessionId, 12)
-      const host = pad(agent.host || '', 12)
-      const doing =
+
+      // ── fixed-width columns ───────────────────────────────────────────────
+      const sessionCol = pad(agent.sessionId, 12)
+      const hostLabel = agent.host || ''
+      // At very narrow widths, truncate the host label rather than the button.
+      const actualHostWidth = Math.min(12, Math.max(0, this.width - 2 - 12 - 1 - SPEECH_BTN_WIDTH - 1 - 4))
+      const hostCol = pad(hostLabel.slice(0, actualHostWidth), actualHostWidth)
+
+      // ── fixed-column budget (visible characters) ───────────────────────────
+      // indent(2) + session(12) + space(1) + host(actualHostWidth) + space(1) + btn(3) + space(1)
+      const fixedWidth = 2 + 12 + 1 + actualHostWidth + 1 + SPEECH_BTN_WIDTH + 1
+      const doingBudget = Math.max(4, this.width - fixedWidth)
+
+      // ── current work ──────────────────────────────────────────────────────
+      const doingRaw =
         agent.status === 'ended'
           ? 'left'
           : here === 'stale'
-            ? style().foreground(MUTED).render('offline')
+            ? 'offline'
             : busy
               ? busy.what
-              : style().foreground(MUTED).render('idle')
+              : 'idle'
+      // Truncate activity text to fit, then re-apply style.
+      const doingTruncated = doingRaw.length > doingBudget
+        ? `${doingRaw.slice(0, doingBudget - 1)}…`
+        : doingRaw
+      const doingStyled =
+        agent.status === 'ended'
+          ? style().foreground(MUTED).render(doingTruncated)
+          : here === 'stale'
+            ? style().foreground(MUTED).render(doingTruncated)
+            : busy
+              ? doingTruncated
+              : style().foreground(MUTED).render(doingTruncated)
+
       const lock = held ? style().foreground(WARN).render(` 🔒${held}`) : ''
-      return fit(`  ${dot} ${name} ${host} ${doing}${lock}`, this.width)
+
+      // ── speech button ─────────────────────────────────────────────────────
+      const btn = this._speechButton(agent.sessionId)
+      // Selection highlight: when keyboard-navigated, mark the selected row.
+      const selected = idx === this.selectedAgent
+
+      // Register hitbox: absolute terminal row = header (2 rows) + idx.
+      // Column = 2 (indent) + session(12) + space(1) + host(actualHostWidth) + space(1)
+      const btnCol = 2 + 12 + 1 + actualHostWidth + 1
+      this._speechHitboxes.push({
+        sessionId: agent.sessionId,
+        row: HEADER_H + idx, // 0-indexed terminal row
+        col: btnCol
+      })
+
+      // ── assemble the row ──────────────────────────────────────────────────
+      // Format: `  <session> <host> <btn> <doing><lock>`
+      const prefix = selected
+        ? style().bold().render(`  ${sessionCol} ${hostCol} `)
+        : `  ${sessionCol} ${hostCol} `
+      const raw = `${prefix}${btn} ${doingStyled}${lock}`
+      return fit(raw, this.width)
     })
   }
 
@@ -517,7 +747,9 @@ class App {
     const counts = summary
       ? `${summary.activeSessions}/${summary.sessions} active · ${summary.openCollisions} open · ${summary.activeLeases} leases`
       : 'waiting for the daemon'
-    return style().foreground(MUTED).render(fit(`  ${counts}   [q] quit`, this.width))
+    return style()
+      .foreground(MUTED)
+      .render(fit(`  ${counts}   [q] quit   [s] voice`, this.width))
   }
 }
 
