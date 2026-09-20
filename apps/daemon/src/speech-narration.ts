@@ -1,7 +1,7 @@
 import { basename } from 'node:path';
 import { redactPayload } from '@agentigram/adapters';
 import type { Event } from '@agentigram/protocol';
-import type { SpeechMetadata } from './event-rendering.js';
+import { isPresenceEvent, type SpeechMetadata, speechMetadata } from './event-rendering.js';
 
 /**
  * How long an agent stays quiet after saying what it is working on.
@@ -11,6 +11,16 @@ import type { SpeechMetadata } from './event-rendering.js';
  * silence, then one line that accounts for everything saved in between.
  */
 export const WRITE_COOLDOWN_MS = 8_000;
+
+/**
+ * How long an arrival or a departure stays said.
+ *
+ * A session announces itself on every reconnect and ends twice whenever its own farewell is
+ * followed by the authority noticing the socket close, so the same sentence can arrive two or
+ * three times within a second. Saying it once is the whole rule: a genuine rejoin minutes later
+ * is news again, and is spoken again.
+ */
+export const REPEAT_WINDOW_MS = 30_000;
 
 /** Beyond this many, a person says "and two other files" rather than reciting a list. */
 const MAX_NAMED = 2;
@@ -23,23 +33,45 @@ const VERBS = ['Updating', 'Editing', 'Working on', 'Changing'];
 const NUMBERS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
 
 /**
- * Turns a burst of writes into the sentence an engineer would actually say.
+ * Everything the daemon says that depends on what it has already said.
  *
- * State is per-laptop rather than replicated: this is presentation, and the authority is the only
- * machine voicing every agent, so there is nothing for two laptops to disagree about.
+ * `speechMetadata` decides whether an event has a line at all; this decides whether the room is
+ * due to hear it. State is per-laptop rather than replicated: this is presentation, and the
+ * authority is the only machine voicing every agent, so there is nothing for two laptops to
+ * disagree about.
  */
-export class WriteNarrator {
+export class SpeechNarrator {
   /** sessionId -> file names saved since that agent last said anything about its writes. */
   private readonly pending = new Map<string, string[]>();
   private readonly lastSpokenAt = new Map<string, number>();
+  /** speaker -> the last presence sentence said for them, and when. */
+  private readonly lastPresence = new Map<string, { text: string; at: number }>();
 
-  constructor(private readonly cooldownMs = WRITE_COOLDOWN_MS) {}
+  constructor(
+    private readonly cooldownMs = WRITE_COOLDOWN_MS,
+    private readonly repeatWindowMs = REPEAT_WINDOW_MS,
+  ) {}
+
+  /** The line to speak for this event, or nothing if the room has heard enough. */
+  line(event: Event, now: number): SpeechMetadata | undefined {
+    const written = this.writeLine(event, now);
+    if (written) return written;
+    if (event.payload.type === 'FILE_WRITE') return undefined;
+
+    const line = speechMetadata(event);
+    if (!line || !isPresenceEvent(event)) return line;
+
+    const said = this.lastPresence.get(line.speaker);
+    if (said?.text === line.text && now - said.at < this.repeatWindowMs) return undefined;
+    this.lastPresence.set(line.speaker, { text: line.text, at: now });
+    return line;
+  }
 
   /**
    * Record a write and, if the agent is due to speak, describe everything it has saved since it
    * last did. Returns nothing while an agent is mid-burst.
    */
-  line(event: Event, now: number): SpeechMetadata | undefined {
+  private writeLine(event: Event, now: number): SpeechMetadata | undefined {
     const payload = event.payload;
     const sessionId = event.actor.sessionId;
     // The worktree watcher reports the person's own edits too, with no session behind them.

@@ -1,6 +1,6 @@
 import { redactPayload } from '@agentigram/adapters';
 import { speechForEvent } from '@agentigram/personas';
-import type { Event, RoomState } from '@agentigram/protocol';
+import type { Event } from '@agentigram/protocol';
 
 export type SpeechMetadata = {
   speaker: string;
@@ -67,22 +67,15 @@ function presenceLine(event: Event, speaker: string): SpeechMetadata | undefined
   return undefined;
 }
 
-/**
- * One arrival is one announcement.
- *
- * A session ends twice whenever its own farewell is followed by the authority noticing the socket
- * close, and re-announces itself on every reconnect. The feed can afford to show both; saying
- * "Bob left the room" twice in Bob's voice sounds like a fault.
- */
-export function isRepeatedPresence(before: RoomState, event: Event): boolean {
-  const payload = event.payload;
-  const status = (sessionId: string) => before.sessions[sessionId]?.status;
-  if (payload.type === 'SESSION_STARTED') return status(payload.sessionId) === 'active';
-  if (payload.type === 'SESSION_ENDED') return status(payload.sessionId) !== 'active';
-  return false;
+/** Whether this event is someone coming or going, which is said at most once per arrival. */
+export function isPresenceEvent(event: Event): boolean {
+  return event.payload.type === 'SESSION_STARTED' || event.payload.type === 'SESSION_ENDED';
 }
 
-/** Session ids are lower case; a voice should still say a name the way a person would. */
+/**
+ * Session ids are usually lower case; a voice should still say a name the way a person would.
+ * Only the first character moves, or a session called `Bob` is introduced as "B-Ob".
+ */
 function spoken(sessionId: string): string {
-  return sessionId.replace(/[a-z]/, (letter) => letter.toUpperCase());
+  return sessionId.charAt(0).toUpperCase() + sessionId.slice(1);
 }

@@ -34,7 +34,6 @@ import pino from 'pino';
 import { AuthorityTransport } from './authority-transport.js';
 import { autonomousDenial } from './autonomous-guard.js';
 import { CursorStore } from './cursor-store.js';
-import { isRepeatedPresence, speechMetadata } from './event-rendering.js';
 import { isFreshEvent, shouldRouteToInbox, shouldWake, WakeInbox } from './inbox.js';
 import type { InstallState } from './install.js';
 import { createIpcServer, type IpcFrame, type IpcRequest, type IpcResponse } from './ipc.js';
@@ -45,7 +44,7 @@ import { isPipe } from './runtime.js';
 import { summarise } from './summary.js';
 import { SymbolReader } from './symbol-reader.js';
 import { WorktreeWatcher } from './watcher.js';
-import { WriteNarrator } from './write-narration.js';
+import { SpeechNarrator } from './speech-narration.js';
 
 const SESSION_HEARTBEAT_MS = 10_000;
 /**
@@ -83,7 +82,7 @@ export class LaptopDaemon {
   private readonly watchers = new Map<string, WorktreeWatcher>();
   private readonly recentAgentWrites = new Map<string, number>();
   private readonly inbox = new WakeInbox();
-  private readonly writes = new WriteNarrator();
+  private readonly narrator = new SpeechNarrator();
   private readonly subscribers = new Set<(frame: IpcFrame) => void>();
   /** sessionId -> when it last did something, and what. Derived, never stored. */
   private readonly activity = new Map<string, { at: number; what: string }>();
@@ -689,10 +688,7 @@ export class LaptopDaemon {
     const now = Date.now();
     for (const event of events.sort((a, b) => a.seq - b.seq)) {
       if (event.seq <= this.roomState.lastSeq) continue;
-      // Presence is judged against the room as it was a moment ago: whether an arrival is news
-      // is exactly the question of what this event changed.
-      const before = this.roomState;
-      this.roomState = reduce(before, event).state;
+      this.roomState = reduce(this.roomState, event).state;
       this.cursor.set(event.seq);
       this.recordActivity(event);
       // Collisions are opened by the authority as it sequences events
@@ -700,12 +696,10 @@ export class LaptopDaemon {
       // ordinary replicated events like any other.
       //
       // The room view sees everything this laptop sees, including dashboard-only types.
-      const speakable = isFreshEvent(event, now) && !isRepeatedPresence(before, event);
-      // Writes are narrated separately because saying them well needs memory of the last few:
-      // one save is "editing user.ts", ten in a row is one sentence, not ten.
-      const speech = speakable
-        ? (speechMetadata(event) ?? this.writes.line(event, now))
-        : undefined;
+      // Speech goes through the narrator rather than straight to a line, because saying a room
+      // well needs memory of the last few events: ten saves in a row are one sentence, and an
+      // agent that re-announces itself on reconnect has still only arrived once.
+      const speech = isFreshEvent(event, now) ? this.narrator.line(event, now) : undefined;
       this.broadcast({
         t: 'event',
         seq: event.seq,

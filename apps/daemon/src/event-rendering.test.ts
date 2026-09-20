@@ -1,8 +1,8 @@
-import { emptyRoomState, type Event, type RoomState } from '@agentigram/protocol';
+import type { Event } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   agentContextText,
-  isRepeatedPresence,
+  isPresenceEvent,
   speechMetadata,
   SYSTEM_SPEAKER,
 } from './event-rendering.js';
@@ -74,35 +74,20 @@ describe('event rendering boundaries', () => {
     ).toBeUndefined();
   });
 
-  it('announces one arrival once, however many events report it', () => {
-    const room = (status: 'active' | 'ended'): RoomState => ({
-      ...emptyRoomState('hackathon'),
-      sessions: {
-        bob: {
-          sessionId: 'bob',
-          engineerId: 'eng-bob',
-          host: 'codex',
-          model: 'gpt',
-          branch: 'main',
-          status,
-          readFiles: [],
-          readSymbols: [],
-          writeFiles: [],
-          startedAt: new Date().toISOString(),
-          lastHeartbeatAt: new Date().toISOString(),
-        },
-      },
-    });
-    const left = event({ type: 'SESSION_ENDED', sessionId: 'bob' });
-
-    expect(isRepeatedPresence(emptyRoomState('hackathon'), event(joined))).toBe(false);
-    expect(isRepeatedPresence(room('active'), event(joined))).toBe(true);
-    // Its own farewell, then the authority noticing the socket close: one departure.
-    expect(isRepeatedPresence(room('active'), left)).toBe(false);
-    expect(isRepeatedPresence(room('ended'), left)).toBe(true);
-    expect(isRepeatedPresence(room('active'), event({ type: 'FILE_READ', path: 'a.ts' }))).toBe(
-      false,
+  it('says a name the way a person would, whatever case it was joined under', () => {
+    // Only the first character moves: `Bob` must not be introduced as "B-Ob".
+    expect(speechMetadata(event({ ...joined, sessionId: 'Bob' }))?.text).toBe(
+      'Bob joined the room.',
     );
+    expect(speechMetadata(event({ ...joined, sessionId: 'backend' }))?.text).toBe(
+      'Backend joined the room.',
+    );
+  });
+
+  it('knows which events are someone coming or going', () => {
+    expect(isPresenceEvent(event(joined))).toBe(true);
+    expect(isPresenceEvent(event({ type: 'SESSION_ENDED', sessionId: 'bob' }))).toBe(true);
+    expect(isPresenceEvent(event({ type: 'FILE_READ', path: 'a.ts' }))).toBe(false);
   });
 
   it('gives the room a speaker of its own when no session said it', () => {
