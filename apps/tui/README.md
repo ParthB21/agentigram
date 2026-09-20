@@ -164,13 +164,22 @@ plays a one-line hardware/audio smoke test before a demo.
 - Model `TTS_MINI_V1_EN_PARLER_TTS_Q8_0` (~1.1 GB, downloaded through the QVAC registry on first use) via `@qvac/tts-ggml@0.7.5` and the existing `@qvac/inference@0.18.2` `tts-ggml` plugin.
 - Runs in its own worker (`workers/tts.js`). Metal on Apple Silicon, one retry on CPU.
 - Output rate is pinned to 44100 Hz in the model config. PCM crosses the worker boundary as base64-encoded signed 16-bit audio, is wrapped as a temporary WAV, and is played with `/usr/bin/afplay`.
-- Voices come from hashing the session id into a Parler speaker description, so they are stable across restarts.
-- Settings persist to `<storage>/speech.json`: volume 0.8, local agent on, remote agents muted.
+- Voices come from hashing the session id into a Parler speaker description, so they are stable across restarts. A line the orchestrator publishes as the room rather than as either agent is attributed to `agentigram` and is never muted by default — it matches no agent row, so there would be no button to turn it back on.
+- Settings persist to `<storage>/speech.json`: volume 0.8, plus every explicit mute or unmute.
 - Only fresh events are considered. Exact `MESSAGE` text and deterministic coordination milestones are eligible; heartbeats, file reads/writes, tool calls, logs, and persona filler are silent.
+- The model starts loading at launch rather than on the first line, so a debate is not half over before the first word plays. `agg speech-test` downloads it ahead of a demo.
 - Tests (`npm test`) use fake engine/player/fs. Run `agg speech-test --text "hello"` for the real model and audio path.
 
 The QVAC voice renderer is deliberately invisible: it never appears as a room
-participant. `[♪]` means an agent is speaking, `[▶]` means its voice is
-available, `[×]` means muted/unavailable, and `[!]` reports a speech failure.
-Each laptop enables its own coding agent by default and mutes remote agents, so
-one room message is not spoken by every machine.
+participant. `[♪]` means an agent is speaking, a spinner means its line is being
+synthesised or is queued behind another, `[▶]` means its voice is available,
+`[×]` means muted/unavailable, and `[!]` reports a speech failure. The footer
+names the current speaker, and names them from the moment synthesis starts —
+playback is seconds later, and by then they are already talking.
+
+Who a laptop speaks for depends on its room role. A peer voices only its own
+coding agent, so one room message is not spoken by every machine. The authority
+voices the whole roster, because it is where the orchestrator runs and the
+orchestrator negotiates on behalf of agents whose laptop is not in the room —
+without this, the debate it conducts would be inaudible on the one machine
+running it. Either way, `[s]` or a click on the button overrides it per agent.

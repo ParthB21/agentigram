@@ -2,19 +2,34 @@
 //
 //   const speech = new Speech({ engine, player, settings })
 //   speech.setLocalSession('backend')
+//   speech.setVoicedSessions(['backend', 'payments'])  // see below
 //   speech.enqueue({ seq, speaker, text, priority })   // priority 0-3, 3 = urgent
 //   speech.toggle(sessionId) · speech.mute(sessionId, true) · speech.cancel()
-//   await speech.close()
+//   await speech.warm() · await speech.close()
 //
-// Events: progress, ready, queued, started, finished, muted, error.
+// Events: progress, ready, queued, started, finished, muted, error, queue.
 //
 // One line at a time: synthesise, play, next. The engine and player are
 // injected so all of the queue policy here is testable without a model.
+//
+// Which agents a laptop speaks for is set from outside, because it depends on
+// the room role. A plain peer voices only its own coding agent, so one room
+// message is not spoken by every machine. The authority also runs the
+// orchestrator, which negotiates on behalf of agents whose laptop is not here
+// to speak for them — so it is given the whole roster, and without that the
+// debate it is conducting would be inaudible on the one machine running it.
 const EventEmitter = require('bare-events')
 const { voiceFor } = require('./voices.js')
 
 const MAX_QUEUE = 8
 const URGENT = 3
+/**
+ * The speaker the daemon attributes a line with no session of its own to. Never
+ * muted by default: it is the room narrating its own decisions, and it appears
+ * in no agent row, so there would be no button to turn it back on with.
+ * Matches `SYSTEM_SPEAKER` in `apps/daemon/src/event-rendering.ts`.
+ */
+const SYSTEM_SPEAKER = 'agentigram'
 
 class Speech extends EventEmitter {
   constructor({ engine, player, settings, maxQueue = MAX_QUEUE } = {}) {
@@ -24,11 +39,12 @@ class Speech extends EventEmitter {
     this.settings = settings
     this.maxQueue = maxQueue
     this.localSession = null
+    this.voiced = new Set()
     this.closed = false
 
     this._queue = []
     this._seen = new Set()
-    this._current = null // { item, playback, cancelled }
+    this._current = null // { item, playback, cancelled, playing }
     this._running = false
 
     engine.on('progress', (pct) => this.emit('progress', pct))
@@ -41,8 +57,30 @@ class Speech extends EventEmitter {
     this.localSession = sessionId
   }
 
+  /** Every session this laptop is responsible for voicing, beyond its own agent. */
+  setVoicedSessions(sessionIds) {
+    this.voiced = new Set(sessionIds || [])
+  }
+
   isMuted(sessionId) {
-    return this.settings.isMuted(sessionId, this.localSession)
+    return this.settings.isMuted(sessionId, this.speaksByDefault(sessionId))
+  }
+
+  /** Whether a speaker is heard here absent an explicit choice from the person watching. */
+  speaksByDefault(sessionId) {
+    return (
+      sessionId === this.localSession || sessionId === SYSTEM_SPEAKER || this.voiced.has(sessionId)
+    )
+  }
+
+  /**
+   * Start loading the model before there is anything to say. The first line of a
+   * debate is the one that explains it, and synthesis that begins by downloading
+   * ~1.1 GB would miss the whole exchange.
+   */
+  warm() {
+    if (this.closed) return Promise.resolve()
+    return this.engine.ensureLoaded()
   }
 
   enqueue({ seq, speaker, text, priority = 0 }) {
@@ -63,6 +101,7 @@ class Speech extends EventEmitter {
     if (priority >= URGENT && this._current && this._current.item.priority < URGENT) {
       this._interrupt()
     }
+    this._announce()
     this._pump()
     return true
   }
@@ -78,11 +117,13 @@ class Speech extends EventEmitter {
       if (this._current?.item.speaker === sessionId) this._interrupt()
     }
     this.emit('muted', { sessionId, muted })
+    this._announce()
   }
 
   cancel() {
     this._queue = []
     this._interrupt()
+    this._announce()
   }
 
   async close() {
@@ -132,8 +173,12 @@ class Speech extends EventEmitter {
   }
 
   async _speak(item) {
-    const current = { item, playback: null, cancelled: false }
+    const current = { item, playback: null, cancelled: false, playing: false }
     this._current = current
+    // Claim the speaker before synthesis rather than after it. Synthesis takes
+    // seconds, and an indicator that waits for audio is an indicator that names
+    // the speaker once they have already started talking.
+    this._announce()
     try {
       const { samples, sampleRate } = await this.engine.synthesize(
         item.text,
@@ -141,7 +186,9 @@ class Speech extends EventEmitter {
       )
       if (current.cancelled || this.closed) return
       current.playback = this.player.play(samples, sampleRate, this.settings.volume)
+      current.playing = true
       this.emit('started', { seq: item.seq, speaker: item.speaker })
+      this._announce()
       await current.playback.done
       if (!current.cancelled) this.emit('finished', { seq: item.seq, speaker: item.speaker })
     } catch (err) {
@@ -153,8 +200,24 @@ class Speech extends EventEmitter {
         this.emit('finished', { seq: item.seq, speaker: item.speaker, interrupted: true })
       }
       this._current = null
+      this._announce()
     }
+  }
+
+  /**
+   * The whole of what is audible right now, as one snapshot: who is talking, who
+   * is being synthesised, and who is behind them. Counting `queued` against
+   * `finished` in the view instead would drift every time the cap evicts a line
+   * or a mute empties the queue.
+   */
+  _announce() {
+    const current = this._current
+    this.emit('queue', {
+      speaking: current?.playing ? current.item.speaker : null,
+      preparing: current && !current.playing ? current.item.speaker : null,
+      pending: [...this._queue].sort((a, b) => b.priority - a.priority).map((item) => item.speaker)
+    })
   }
 }
 
-module.exports = { Speech, MAX_QUEUE, URGENT }
+module.exports = { Speech, MAX_QUEUE, URGENT, SYSTEM_SPEAKER }

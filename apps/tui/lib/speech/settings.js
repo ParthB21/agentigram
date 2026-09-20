@@ -1,8 +1,9 @@
 // Volume and per-agent mute, kept under the app's existing storage directory.
 //
-// Defaults: the local agent speaks, remote agents are muted, volume 0.8. A
-// stored mute for a session overrides the default either way, so a manual
-// unmute of a remote agent survives a restart.
+// Defaults are decided by the caller and passed in as `speaksByDefault`, because
+// which agents a laptop is responsible for voicing depends on its room role. A
+// stored mute for a session overrides the default either way, so a manual mute
+// or unmute survives a restart.
 const fs = require('bare-fs')
 const path = require('bare-path')
 
@@ -35,9 +36,9 @@ class Settings {
     }
   }
 
-  isMuted(sessionId, localSessionId) {
+  isMuted(sessionId, speaksByDefault) {
     if (sessionId in this.muted) return this.muted[sessionId]
-    return sessionId !== localSessionId
+    return !speaksByDefault
   }
 
   setMuted(sessionId, muted) {

@@ -79,17 +79,20 @@ function fakePlayer() {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
 
-function setup({ maxQueue, local = 'codex' } = {}) {
+function setup({ maxQueue, local = 'codex', voiced } = {}) {
   const engine = fakeEngine()
   const player = fakePlayer()
   const settings = new Settings(null)
   const speech = new Speech({ engine, player, settings, maxQueue })
   speech.setLocalSession(local)
+  if (voiced) speech.setVoicedSessions(voiced)
   const events = []
   for (const name of ['queued', 'started', 'finished', 'muted', 'error', 'ready', 'progress']) {
     speech.on(name, (e) => events.push([name, e]))
   }
-  return { engine, player, settings, speech, events }
+  const queue = []
+  speech.on('queue', (snapshot) => queue.push(snapshot))
+  return { engine, player, settings, speech, events, queue }
 }
 
 test('speech: wav header has the reported sample rate and length', (t) => {
@@ -153,13 +156,15 @@ test('speech: settings default, persist and survive a restart', (t) => {
   const fs = memfs()
   const a = new Settings('/store', { fsImpl: fs })
   t.is(a.volume, DEFAULT_VOLUME)
-  t.is(a.isMuted('codex', 'codex'), false, 'local speaks')
-  t.is(a.isMuted('claude', 'codex'), true, 'remote muted')
+  t.is(a.isMuted('codex', true), false, 'a voiced agent speaks')
+  t.is(a.isMuted('claude', false), true, 'an agent this laptop does not voice is muted')
   a.setMuted('claude', false)
   a.setVolume(0.3)
   const b = new Settings('/store', { fsImpl: fs })
   t.is(b.volume, 0.3)
-  t.is(b.isMuted('claude', 'codex'), false, 'manual unmute persisted')
+  t.is(b.isMuted('claude', false), false, 'manual unmute persisted')
+  a.setMuted('codex', true)
+  t.is(a.isMuted('codex', true), true, 'a manual mute overrides the default too')
   const corrupt = new Settings('/store', { fsImpl: memfs({ '/store/speech.json': '{bad' }) })
   t.is(corrupt.volume, 0.8)
 })
@@ -183,6 +188,67 @@ test('speech: speaks the local agent, skips muted remote, dedupes by seq', async
   speech.enqueue({ seq: 2, speaker: 'codex', text: 'hello', priority: 1 })
   await tick()
   t.is(engine.spoken.length, 1, 'a spoken seq never repeats')
+})
+
+test('speech: the authority voices the whole room, a peer only its own agent', async (t) => {
+  // The orchestrator runs on the authority and negotiates on behalf of agents
+  // whose laptop is not here to speak for them, so the machine conducting the
+  // debate has to be able to hear both sides of it.
+  const authority = setup({ local: 'backend', voiced: ['backend', 'payments'] })
+  t.is(authority.speech.enqueue({ seq: 1, speaker: 'payments', text: 'I have read User.id' }), true)
+  await tick()
+  t.is(authority.engine.spoken[0].text, 'I have read User.id')
+
+  const peer = setup({ local: 'backend' })
+  t.is(peer.speech.enqueue({ seq: 1, speaker: 'payments', text: 'I have read User.id' }), false)
+  await tick()
+  t.is(peer.engine.spoken.length, 0, 'a peer does not repeat a remote agent')
+})
+
+test('speech: the room speaks for itself and cannot be silenced by default', async (t) => {
+  // Lines the orchestrator publishes as the room have no session, so they match
+  // no agent row — a default mute would leave no button to turn them back on.
+  const { engine, speech, settings } = setup({ local: 'backend' })
+  t.is(speech.isMuted('agentigram'), false)
+  speech.enqueue({ seq: 1, speaker: 'agentigram', text: 'The debate is settled.', priority: 2 })
+  await tick()
+  t.is(engine.spoken[0].text, 'The debate is settled.')
+  speech.mute('agentigram', true)
+  t.is(settings.muted.agentigram, true, 'it is still mutable on purpose')
+})
+
+test('speech: the queue snapshot names a speaker before there is any audio', async (t) => {
+  const { engine, player, speech, queue } = setup({ local: 'backend', voiced: ['payments'] })
+  speech.enqueue({ seq: 1, speaker: 'payments', text: 'first' })
+  speech.enqueue({ seq: 2, speaker: 'backend', text: 'second' })
+  await tick()
+  const beforeAudio = queue.at(-1)
+  t.is(beforeAudio.preparing, 'payments', 'named while synthesis is still running')
+  t.is(beforeAudio.speaking, null, 'nothing is playing yet')
+  t.alike(beforeAudio.pending, ['backend'], 'and the line behind it is named too')
+  t.is(player.plays.length, 0)
+
+  engine.finish()
+  await tick()
+  const playing = queue.at(-1)
+  t.is(playing.speaking, 'payments')
+  t.is(playing.preparing, null)
+
+  player.plays[0].playback.end()
+  await tick()
+  t.is(queue.at(-1).preparing, 'backend', 'the next speaker is claimed immediately')
+})
+
+test('speech: warm loads the model before anything is queued', async (t) => {
+  const { engine, speech } = setup()
+  let loads = 0
+  engine.ensureLoaded = () => {
+    loads++
+    return Promise.resolve()
+  }
+  await speech.warm()
+  t.is(loads, 1, 'the model starts downloading before the first line')
+  t.is(engine.spoken.length, 0, 'and nothing was spoken to trigger it')
 })
 
 test('speech: lines are serialized', async (t) => {

@@ -242,7 +242,7 @@ test('shows the room before the model has loaded', async (t) => {
   const view = screen(app)
   t.is(app.phase, 'loading')
   t.ok(view.includes('42%'), 'header reports download progress')
-  t.ok(view.includes('backend'), 'agents are listed')
+  t.ok(view.includes('Backend'), 'agent names use display capitalization')
   t.ok(view.includes('claude-code') && view.includes('codex'), 'each agent shows its host')
   t.ok(view.includes('editing user.ts'), 'a working agent shows what it is doing')
   t.ok(view.includes('idle'), 'one that has gone quiet says idle')
@@ -264,7 +264,7 @@ test('a peer never shows or accepts local model state', async (t) => {
   t.absent(view.includes('loading 75%'), 'peer header has no model progress')
   t.absent(view.includes('loaded on this machine'), 'peer feed has no model notice')
   t.absent(view.includes('[r] redraft'), 'peer cannot invoke the local model')
-  t.ok(view.includes('peer') && view.includes('daemon ✓'), 'room role and daemon remain visible')
+  t.ok(view.includes('peer') && view.includes('Daemon ✓'), 'room role and daemon remain visible')
   app = await drive(app, [keyMsg('r')])
   t.is(inference.calls.asked.length, 0, 'peer redraft input never reaches inference')
 })
@@ -309,7 +309,7 @@ test('leave and same-session rejoin update the roster and feed immediately', asy
     },
     { type: 'room.state', state: withoutPayments }
   ])
-  t.ok(screen(app).includes('payments left the room'), 'departure is visible in the live feed')
+  t.ok(screen(app).includes('Payments left the room'), 'departure is visible in the live feed')
   t.absent(
     app.state.agents.some((agent) => agent.sessionId === 'payments'),
     'departure removes the roster row'
@@ -324,7 +324,7 @@ test('leave and same-session rejoin update the roster and feed immediately', asy
   ])
 
   const view = screen(app)
-  t.ok(view.includes('payments joined the room'), 'same-id rejoin is visible in the live feed')
+  t.ok(view.includes('Payments joined the room'), 'same-id rejoin is visible in the live feed')
   t.ok(
     app.state.agents.some((agent) => agent.sessionId === 'payments'),
     'rejoin restores the row'
@@ -535,10 +535,37 @@ test('the room feed shows agent actions without tags, sequence numbers, or heart
   ])
   const view = screen(app)
   t.is(app.feed.length, 1, 'heartbeat is not retained in the feed')
-  t.ok(view.includes('vibecode FILE_READ spec.md'), 'agent and action remain')
+  t.ok(view.includes('Vibecode FILE_READ spec.md'), 'agent and action remain')
   t.absent(view.includes('FILE·REA'), 'abbreviated event tag is removed')
   t.absent(view.includes('#78'), 'sequence number is removed')
   t.absent(view.includes('HEARTBEAT'), 'heartbeat is hidden')
+})
+
+test('agent capitalization is consistent across roster and mixed-case feed events', async (t) => {
+  const state = {
+    ...STATE,
+    agents: [{ sessionId: 'vishnu', host: 'codex', status: 'active' }]
+  }
+  const app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.status', status: 'connected' },
+    { type: 'room.state', state },
+    {
+      type: 'room.event',
+      frame: { seq: 81, eventType: 'TOOL_CALL', text: '#81 Vishnu TOOL_CALL Bash' }
+    },
+    {
+      type: 'room.event',
+      frame: { seq: 82, eventType: 'FILE_WRITE', text: '#82 vishnu FILE_WRITE README.md' }
+    }
+  ])
+  const view = screen(app)
+
+  t.ok(/Vishnu\s+codex/.test(view), 'roster capitalizes the session name')
+  t.ok(view.includes('Vishnu TOOL_CALL Bash'), 'already-capitalized feed names stay intact')
+  t.ok(view.includes('Vishnu FILE_WRITE README.md'), 'lowercase feed names match the roster')
+  t.ok(view.includes('Daemon ✓'), 'connected daemon status uses display capitalization')
+  t.absent(view.includes('vishnu FILE_WRITE'), 'lowercase display variant is removed')
 })
 
 test('the view never exceeds the terminal height', async (t) => {
@@ -671,6 +698,92 @@ test('speaking a session never highlights a different row', async (t) => {
   const plain = screen(app)
   const playCount = (plain.match(/\[♪\]/g) || []).length
   t.is(playCount, 1, 'exactly one row shows playing')
+})
+
+test('the speaker is named while the line is still being synthesised', async (t) => {
+  // Synthesis takes seconds. Waiting for playback to name the speaker means
+  // naming them once they are already talking.
+  const app = await drive(
+    new App({
+      inference: fakeInference(),
+      room: fakeRoom(),
+      speech: fakeSpeech(),
+      localSession: 'backend'
+    }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.queue', speaking: null, preparing: 'payments', pending: ['backend'] }
+    ]
+  )
+  const view = screen(app)
+  t.ok(view.includes('Payments next'), 'the footer names the speaker before any audio')
+  t.absent(view.includes('speaking'), 'and does not claim they are speaking yet')
+  t.absent(view.includes('[♪]'), 'no row claims to be playing')
+})
+
+test('the footer names who is speaking, including the room itself', async (t) => {
+  let app = await drive(
+    new App({
+      inference: fakeInference(),
+      room: fakeRoom(),
+      speech: fakeSpeech(),
+      localSession: 'backend'
+    }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.queue', speaking: 'payments', preparing: null, pending: [] }
+    ]
+  )
+  t.ok(screen(app).includes('Payments speaking'), 'the active speaker is named')
+
+  // The orchestrator's own lines belong to no agent row, so the footer is the
+  // only place they can be attributed.
+  app = await drive(app, [
+    { type: 'speech.queue', speaking: 'agentigram', preparing: null, pending: [] }
+  ])
+  t.ok(screen(app).includes('Agentigram speaking'), 'a line from the room is attributed too')
+
+  app = await drive(app, [{ type: 'speech.queue', speaking: null, preparing: null, pending: [] }])
+  t.absent(screen(app).includes('speaking'), 'silence names nobody')
+})
+
+test('a queued agent row moves before its audio starts', async (t) => {
+  const app = await drive(
+    new App({
+      inference: fakeInference(),
+      room: fakeRoom(),
+      speech: fakeSpeech(),
+      localSession: 'backend'
+    }),
+    [
+      resize,
+      { type: 'room.state', state: { ...STATE, collisions: [] } },
+      { type: 'speech.queue', speaking: null, preparing: 'backend', pending: [] }
+    ]
+  )
+  const view = screen(app)
+  t.absent(view.includes('[▶]'), 'the row no longer reads as idle')
+  t.absent(view.includes('[♪]'), 'and does not yet read as playing')
+  t.is(app.preparingSession, 'backend')
+})
+
+test('the authority defaults to voicing agents that are not here to speak', async (t) => {
+  // No controller injected, so the view falls back to its own default: on the
+  // authority, which is where the orchestrator negotiates for absent agents.
+  const authority = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: { ...STATE, mode: 'authority', collisions: [] } }
+  ])
+  t.absent(authority._isMuted('payments'), 'the authority voices a remote agent')
+
+  const peer = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: { ...STATE, mode: 'peer', collisions: [] } }
+  ])
+  t.ok(peer._isMuted('payments'), 'a peer does not repeat it')
+  t.absent(peer._isMuted('agentigram'), 'but every laptop hears the room itself')
 })
 
 test('speech.error marks speech unavailable and shows [!]', async (t) => {

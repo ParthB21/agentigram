@@ -1,6 +1,6 @@
 import type { Event } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
-import { agentContextText, speechMetadata } from './event-rendering.js';
+import { agentContextText, speechMetadata, SYSTEM_SPEAKER } from './event-rendering.js';
 
 function event(payload: Event['payload']): Event {
   return {
@@ -31,9 +31,29 @@ describe('event rendering boundaries', () => {
   it('renders safe speech without exposing raw commands', () => {
     expect(
       speechMetadata(event({ type: 'MESSAGE', to: 'frontend', text: 'bearer abcdefghijklmnop' })),
-    ).toMatchObject({ speaker: 'Backend', text: 'bearer [REDACTED]', priority: 1 });
+    ).toMatchObject({ speaker: 'backend', text: 'bearer [REDACTED]', priority: 1 });
     expect(
       speechMetadata(event({ type: 'TOOL_CALL', tool: 'Bash: rm -rf /', phase: 'post' })),
     ).toBeUndefined();
+  });
+
+  it('attributes a line to the session that said it, not to its persona role', () => {
+    // The speaker is both the mute key and the seed the voice is hashed from, so
+    // it has to be the same string every laptop knows the speaker by.
+    const spoken = speechMetadata(event({ type: 'ACCEPT', collisionId: 'c1' }));
+    expect(spoken?.speaker).toBe('backend');
+  });
+
+  it('gives the room a speaker of its own when no session said it', () => {
+    // The orchestrator publishes its merged contract and its final report as the
+    // room rather than as either agent; those lines still have to be voiced.
+    const roomLine = {
+      ...event({ type: 'MESSAGE', to: 'all', text: 'The debate is settled.' }),
+      actor: { engineerId: 'eng-backend', kind: 'system' as const },
+    };
+    expect(speechMetadata(roomLine)).toMatchObject({
+      speaker: SYSTEM_SPEAKER,
+      text: 'The debate is settled.',
+    });
   });
 });
