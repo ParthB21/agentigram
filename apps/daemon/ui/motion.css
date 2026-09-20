@@ -1,18 +1,12 @@
-@keyframes orbit {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes speak-ring {
+@keyframes speaker-avatar-pulse {
   0%,
   100% {
-    opacity: 0.48;
-    transform: scale(0.96);
+    transform: scale(0.94);
+    filter: brightness(0.94);
   }
   50% {
-    opacity: 0.9;
-    transform: scale(1.07);
+    transform: scale(1.08);
+    filter: brightness(1.18);
   }
 }
 
@@ -125,47 +119,12 @@
   }
 }
 
-@keyframes ambient-one {
-  0%,
-  100% {
-    transform: translate3d(-2%, -2%, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(9%, 5%, 0) scale(1.13);
-  }
-}
-
-@keyframes ambient-two {
-  0%,
-  100% {
-    transform: translate3d(2%, 1%, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(-8%, -4%, 0) scale(1.08);
-  }
-}
-
-.orb-one {
-  animation: ambient-one 20s ease-in-out infinite;
-}
-.orb-two {
-  animation: ambient-two 24s ease-in-out infinite;
-}
-
-.agent-tile.is-working .agent-orbit {
-  animation: orbit 7s linear infinite;
-}
-
-.agent-tile.is-working .agent-orbit::before {
-  opacity: 0.78;
-}
-
 .agent-tile.is-working .task-pulse {
   animation: task-pulse 1.8s ease-in-out infinite;
 }
 
-.agent-tile.is-speaking .agent-halo {
-  animation: speak-ring 1.25s ease-in-out infinite;
+.agent-tile.is-speaking .agent-avatar {
+  animation: speaker-avatar-pulse 1.15s ease-in-out infinite;
 }
 
 .agent-tile.is-speaking::after {
@@ -178,12 +137,6 @@
 
 .agent-tile.is-speaking .speech-wave i:nth-child(even) {
   animation: waveform-b 780ms ease-in-out -210ms infinite;
-}
-
-.agent-tile.is-synthesizing .agent-orbit {
-  border-style: dashed;
-  opacity: 0.8;
-  animation: orbit 2.8s linear infinite;
 }
 
 .agent-tile.is-synthesizing .speech-wave i {
@@ -231,7 +184,7 @@
 }
 
 .presenting .meeting-surface {
-  background: rgba(10, 13, 21, 0.38);
+  background: rgba(12, 12, 12, 0.38);
 }
 
 .presenting .agent-stage {
@@ -239,12 +192,12 @@
 }
 
 .presenting .agent-name {
-  font-size: clamp(18px, 2.4vw, 29px);
+  font-size: clamp(22px, 2.6vw, 34px);
 }
 
 .presenting .agent-model,
 .presenting .agent-task {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .presenting .dock-shell {
@@ -271,7 +224,7 @@
   }
 
   .agent-name {
-    font-size: 14px;
+    font-size: 17px;
   }
   .agent-avatar-wrap {
     width: 72px;
@@ -340,7 +293,7 @@
     padding-block: 12px 8px;
   }
   .stage-heading h1 {
-    font-size: 17px;
+    font-size: 21px;
   }
   .dock-shell {
     bottom: 10px;
@@ -367,12 +320,10 @@
 
 @media (prefers-reduced-motion: reduce) {
   .ambient-orb,
-  .agent-tile.is-working .agent-orbit,
   .agent-tile.is-working .task-pulse,
-  .agent-tile.is-speaking .agent-halo,
+  .agent-tile.is-speaking .agent-avatar,
   .agent-tile.is-speaking::after,
   .agent-tile.is-speaking .speech-wave i,
-  .agent-tile.is-synthesizing .agent-orbit,
   .agent-tile.is-synthesizing .speech-wave i,
   .live-caption,
   .collision-banner,
@@ -403,6 +354,6 @@ body.reduce-transparency .control-dock,
 body.reduce-transparency .dock-launcher,
 body.reduce-transparency .collision-banner,
 body.reduce-transparency .live-caption {
-  background: #171b27;
+  background: #171717;
   backdrop-filter: none;
 }

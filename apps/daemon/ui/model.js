@@ -85,7 +85,7 @@ export function deriveAgentView(state, agent, speechState = 'idle', muted = fals
     name: displayName(id),
     initials: initials(id),
     hue: stableHue(id),
-    host: [agent.host, agent.model].filter(Boolean).join(' / ') || 'Agent',
+    host: agentRuntime(agent),
     task,
     intent: activity && agent.intent?.task !== activity.what ? agent.intent?.task : undefined,
     leases,
@@ -97,6 +97,13 @@ export function deriveAgentView(state, agent, speechState = 'idle', muted = fals
     muted,
     label,
   };
+}
+
+function agentRuntime(agent) {
+  return [agent.host, agent.model]
+    .map((value) => String(value ?? '').trim())
+    .filter((value) => value && value.toLowerCase() !== 'unknown')
+    .join(' / ');
 }
 
 export function frameCategory(eventType) {

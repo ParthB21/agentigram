@@ -82,6 +82,22 @@ test('deriveAgentView gives playback state precedence over work state', () => {
   assert.equal(view.leases.length, 1);
 });
 
+test('deriveAgentView hides unknown model labels', () => {
+  const view = deriveAgentView({ presence: { backend: 'live' }, collisions: [] }, {
+    sessionId: 'backend',
+    host: 'codex',
+    model: 'unknown',
+  });
+  assert.equal(view.host, 'codex');
+
+  const empty = deriveAgentView({ presence: { backend: 'live' }, collisions: [] }, {
+    sessionId: 'backend',
+    host: 'unknown',
+    model: 'unknown',
+  });
+  assert.equal(empty.host, '');
+});
+
 test('speech attribution overrides the event actor for orchestrator narration', () => {
   assert.equal(
     speakerForFrame({ sessionId: 'backend', speech: { speaker: 'agentigram' } }),

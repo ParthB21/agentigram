@@ -24,12 +24,10 @@ export function createAgentTile(view, onToggleVoice) {
   top.append(status, voice);
 
   const avatarWrap = element('div', 'agent-avatar-wrap');
-  const halo = element('span', 'agent-halo');
-  const orbit = element('span', 'agent-orbit');
   const avatar = element('span', 'agent-avatar', view.initials);
   const wave = element('span', 'speech-wave');
   for (let index = 0; index < 5; index += 1) wave.append(document.createElement('i'));
-  avatarWrap.append(halo, orbit, avatar, wave);
+  avatarWrap.append(avatar, wave);
 
   const name = element('strong', 'agent-name', view.name);
   const model = element('span', 'agent-model', view.host);
@@ -76,6 +74,7 @@ export function updateAgentTile(tile, view) {
   refs.statusText.textContent = view.label;
   refs.name.textContent = view.name;
   refs.model.textContent = view.host;
+  refs.model.hidden = !view.host;
   refs.taskText.textContent = view.task;
   refs.task.title = view.intent || view.task;
   refs.voice.setAttribute('aria-label', `${view.muted ? 'Enable' : 'Mute'} ${view.name}'s voice`);
@@ -135,8 +134,8 @@ export function flashTile(tile) {
   if (!tile || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   tile.animate(
     [
-      { backgroundColor: 'rgba(136, 169, 255, 0.15)' },
-      { backgroundColor: 'rgba(136, 169, 255, 0)' },
+      { backgroundColor: 'rgba(255, 255, 255, 0.12)' },
+      { backgroundColor: 'rgba(255, 255, 255, 0)' },
     ],
     { duration: 900, easing: 'cubic-bezier(.16,1,.3,1)' },
   );
