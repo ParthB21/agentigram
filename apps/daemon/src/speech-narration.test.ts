@@ -141,12 +141,10 @@ describe('announcing who is in the room', () => {
     expect(narrator.line(presence('SESSION_STARTED', 'bob'), 0)).toBeDefined();
   });
 
-  it('treats a genuine rejoin as news again', () => {
+  it('does not repeat an arrival later in the same daemon run', () => {
     const narrator = new SpeechNarrator();
     narrator.line(presence('SESSION_STARTED', 'bob'), 0);
-    expect(narrator.line(presence('SESSION_STARTED', 'bob'), REPEAT_WINDOW_MS)?.text).toBe(
-      'Bob joined the room.',
-    );
+    expect(narrator.line(presence('SESSION_STARTED', 'bob'), REPEAT_WINDOW_MS)).toBeUndefined();
   });
 
   it('keeps one agent from muffling another', () => {
@@ -167,12 +165,52 @@ describe('announcing who is in the room', () => {
       payload: {
         type: 'MESSAGE',
         to: 'all',
-        text: 'Orchestrator: 3 agents in the room, no shared files.',
+        text: 'The debate is settled.',
       },
     };
     expect(narrator.line(msg, 0)).toBeDefined();
     expect(narrator.line(msg, 1_000)).toBeUndefined();
     expect(narrator.line(msg, REPEAT_WINDOW_MS + 1)).toBeDefined();
+  });
+
+  it('deduplicates identical spoken lines even when the attributed speaker changes', () => {
+    const narrator = new SpeechNarrator();
+    const message = (seq: number, sessionId?: string): Event => ({
+      id: `event-${seq}`,
+      seq,
+      roomId: 'hackathon',
+      ts: new Date().toISOString(),
+      actor: sessionId
+        ? { engineerId: 'system', sessionId, kind: 'agent' }
+        : { engineerId: 'system', kind: 'system' },
+      source: 'system',
+      payload: {
+        type: 'MESSAGE',
+        to: 'all',
+        text: 'Orchestrator: backend owns user.ts.',
+      },
+    });
+
+    expect(narrator.line(message(200), 0)).toBeDefined();
+    expect(narrator.line(message(201, 'backend'), 1_000)).toBeUndefined();
+  });
+
+  it('introduces the orchestrator plan only once', () => {
+    const narrator = new SpeechNarrator();
+    const plan = (seq: number, text: string): Event => ({
+      id: `event-${seq}`,
+      seq,
+      roomId: 'hackathon',
+      ts: new Date().toISOString(),
+      actor: { engineerId: 'system', kind: 'system' },
+      source: 'system',
+      payload: { type: 'MESSAGE', to: 'all', text },
+    });
+
+    expect(narrator.line(plan(300, 'Orchestrator: backend owns user.ts.'), 0)).toBeDefined();
+    expect(
+      narrator.line(plan(301, 'Orchestrator: payments owns checkout.ts.'), REPEAT_WINDOW_MS + 1),
+    ).toBeUndefined();
   });
 });
 

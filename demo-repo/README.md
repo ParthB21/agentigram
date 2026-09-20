@@ -11,6 +11,7 @@ A small TypeScript app the demo is performed on and the other parts test against
 | `src/auth/` | `login`, demo-only tokens (`issueToken` / `verifyToken`), `AuthResponse` (includes `userId`) |
 | `src/checkout/` | `checkout`, `FakeStripe` / `customerRef`, `CheckoutResponse`, `view-model.ts` (Frontend's UI type) |
 | `src/security/` | `requireAuth`, `requireRole` middleware |
+| `src/collaboration-lab/` | Multi-domain sandbox with 22 small files for multi-agent collision testing |
 
 Each module has colocated Vitest tests (15 tests). Nothing here is production code: the tokens are not secure.
 

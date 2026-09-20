@@ -35,7 +35,9 @@ describe('demo repo index', () => {
     );
     expect(coldMs).toBeLessThan(COLD_BUDGET_MS);
     expect(idx.modules).toContain('src/checkout/checkout.ts');
-    expect(idx.modules.filter((m) => m.endsWith('.test.ts'))).toHaveLength(4);
+    const tests = idx.modules.filter((module) => module.endsWith('.test.ts'));
+    expect(tests).toHaveLength(5);
+    expect(tests).toContain('src/collaboration-lab/collaboration-lab.test.ts');
     expect(idx.symbols[USER_ID]).toMatchObject({
       kind: 'property',
       signature: 'id: number',

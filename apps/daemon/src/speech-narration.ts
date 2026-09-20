@@ -45,10 +45,14 @@ export class SpeechNarrator {
   /** sessionId -> file names saved since that agent last said anything about its writes. */
   private readonly pending = new Map<string, string[]>();
   private readonly lastSpokenAt = new Map<string, number>();
-  /** speaker -> the last presence sentence said for them, and when. */
-  private readonly lastPresence = new Map<string, { text: string; at: number }>();
+  /** Presence hooks can be emitted by both a reconnect and the authority; each fact is said once. */
+  private readonly spokenPresence = new Set<string>();
   /** speaker -> the last line said for them, and when. */
   private readonly lastSpoken = new Map<string, { text: string; at: number }>();
+  /** Exact repeated lines can move between speakers when the orchestrator republishes them. */
+  private readonly lastText = new Map<string, number>();
+  /** The room allocation is an intro, not live conflict narration. */
+  private announcedPlan = false;
 
   constructor(
     private readonly cooldownMs = WRITE_COOLDOWN_MS,
@@ -65,15 +69,27 @@ export class SpeechNarrator {
     if (!line) return undefined;
 
     if (isPresenceEvent(event)) {
-      const said = this.lastPresence.get(line.speaker);
-      if (said?.text === line.text && now - said.at < this.repeatWindowMs) return undefined;
-      this.lastPresence.set(line.speaker, { text: line.text, at: now });
+      const key = presenceKey(event);
+      if (this.spokenPresence.has(key)) return undefined;
+      this.spokenPresence.add(key);
       return line;
+    }
+
+    if (isPlanIntroduction(line.text)) {
+      if (this.announcedPlan) return undefined;
+      this.announcedPlan = true;
+    }
+
+    const normalized = normalizeLine(line.text);
+    const previousTextAt = this.lastText.get(normalized);
+    if (previousTextAt !== undefined && now - previousTextAt < this.repeatWindowMs) {
+      return undefined;
     }
 
     const previous = this.lastSpoken.get(line.speaker);
     if (previous?.text === line.text && now - previous.at < this.repeatWindowMs) return undefined;
     this.lastSpoken.set(line.speaker, { text: line.text, at: now });
+    this.lastText.set(normalized, now);
     return line;
   }
 
@@ -121,4 +137,22 @@ function sentence(files: string[], seq: number): string {
 /** Parler reads a word more reliably than a numeral. */
 function spell(count: number): string {
   return NUMBERS[count] ?? String(count);
+}
+
+function presenceKey(event: Event): string {
+  const payload = event.payload;
+  return payload.type === 'SESSION_STARTED' || payload.type === 'SESSION_ENDED'
+    ? `${payload.type}:${payload.sessionId}`
+    : event.id;
+}
+
+function normalizeLine(text: string): string {
+  return text.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function isPlanIntroduction(text: string): boolean {
+  return (
+    /^orchestrator:\s/i.test(text) ||
+    /^agentigram's orchestrator has allocated\b/i.test(text)
+  );
 }
