@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildProgram, resolveRepositoryRoot } from './cli.js';
+import { buildProgram, detectHost, resolveRepositoryRoot } from './cli.js';
 import { summarise } from './summary.js';
 
 describe('agentigram CLI', () => {
@@ -60,6 +60,14 @@ describe('agentigram CLI', () => {
       'session',
     ]);
     expect(tui?.aliases()).toContain('start');
+  });
+
+  it('does not guess a host outside a positively identified agent environment', () => {
+    expect(detectHost({})).toBeUndefined();
+    expect(detectHost({ CODEX_THREAD_ID: 'thread' })).toBe('codex');
+    expect(detectHost({ CLAUDECODE: '1' })).toBe('claude');
+    expect(detectHost({ GEMINI_CLI: '1' })).toBe('gemini');
+    expect(detectHost({ AGENTIGRAM_HOST: 'antigravity' })).toBe('antigravity');
   });
 
   it('summarises events on one line', () => {

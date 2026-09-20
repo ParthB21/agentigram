@@ -12,6 +12,7 @@ next-env.d.ts
 *.tsbuildinfo
 coverage
 .codex/
+.claude/settings.local.json
 
 # Read-only OpenAgents reference checkout
 openagents-develop/
