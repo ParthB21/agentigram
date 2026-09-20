@@ -31,6 +31,34 @@ import { summarise } from './summary.js';
 const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
 const DAEMON_START_TIMEOUT_MS = 15_000;
 const DAEMON_POLL_MS = 100;
+/** A forced replan asks the local model and then speaks the result, so it is not a fast call. */
+const PLAN_TIMEOUT_MS = 90_000;
+
+type PlanOutput = {
+  summary: string;
+  assignments: {
+    sessionId: string;
+    task: string;
+    owns: string[];
+    claim: string[];
+    avoid: { path: string; owner: string }[];
+  }[];
+};
+
+/** The plan as a person reads it: one block per agent, owned files then forbidden ones. */
+function renderPlan(plan: PlanOutput): string {
+  const lines = [plan.summary, ''];
+  for (const assignment of plan.assignments) {
+    lines.push(`${assignment.sessionId}: ${assignment.task}`);
+    if (assignment.owns.length > 0) lines.push(`  owns    ${assignment.owns.join(', ')}`);
+    if (assignment.claim.length > 0) lines.push(`  leased  ${assignment.claim.length} symbol(s)`);
+    for (const { path, owner } of assignment.avoid) {
+      lines.push(`  avoid   ${path} (${owner} owns it)`);
+    }
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd();
+}
 
 export function resolveRepositoryRoot(root: string, invocationDirectory: string): string {
   return resolve(invocationDirectory, root);
@@ -469,6 +497,54 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     });
 
   program
+    .command('git-event <action>')
+    .description('Report a git action to the room. Called by the repository hooks.')
+    .requiredOption('--root <path>', 'repository root')
+    .action(async (action: string, options: { root: string }) => {
+      // A git hook must never fail a commit, so every path here is best-effort and quiet.
+      try {
+        if (action !== 'commit') return;
+        const root = resolveRoot(options.root);
+        const state = requiredState(root);
+        const paths = execFileSync('git', ['diff', '--cached', '--name-only'], {
+          cwd: root,
+          encoding: 'utf8',
+        })
+          .split('\n')
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .slice(0, 200);
+        if (paths.length === 0) return;
+        await requestIpc(
+          state.socketPath,
+          { type: 'git', action: 'commit', paths },
+          DEFAULT_HOOK_TIMEOUT_MS,
+        );
+      } catch {
+        // No daemon, no room, or no staged files. The commit proceeds either way.
+      }
+    });
+
+  program
+    .command('plan')
+    .description("Show the orchestrator's allocation of the room's work.")
+    .option('--root <path>', 'repository root', defaultRoot)
+    .option('--now', 'recompute and announce the plan immediately')
+    .action(async (options: { root: string; now?: boolean }) => {
+      const state = requiredState(resolveRoot(options.root));
+      const response = await requestIpc(
+        state.socketPath,
+        { type: 'plan', ...(options.now ? { replan: true } : {}) },
+        PLAN_TIMEOUT_MS,
+      );
+      if (!response.ok) throw new Error(response.error);
+      if (!response.output) {
+        return void console.log('No plan yet. Run `agg plan --now` once two agents are in the room.');
+      }
+      console.log(renderPlan(response.output as PlanOutput));
+    });
+
+  program
     .command('mcp')
     .description('Run the MCP stdio shim that forwards to the local daemon.')
     .option('--root <path>', 'repository root', defaultRoot)
@@ -696,8 +772,9 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .option('--peers <count>', 'number of local peers', '4')
     .action(async (options: { scenario: string; peers: string }) => {
       if (options.scenario !== 'user-id-uuid') throw new Error('only user-id-uuid is available');
-      const result = await runLocalDemo(Number(options.peers));
+      const { plan, ...result } = await runLocalDemo(Number(options.peers));
       console.log(JSON.stringify(result, null, 2));
+      console.log(plan ? `\n${renderPlan(plan)}` : '\nThe orchestrator produced no plan.');
     });
 
   program

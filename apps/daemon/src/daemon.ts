@@ -41,6 +41,7 @@ import { createIpcServer, type IpcFrame, type IpcRequest, type IpcResponse } fro
 import { freezeDenial } from './orchestrator/freeze.js';
 import { OllamaClient } from './orchestrator/ollama.js';
 import { Orchestrator } from './orchestrator/orchestrator.js';
+import { Planner } from './orchestrator/planner.js';
 import { isPipe } from './runtime.js';
 import { summarise } from './summary.js';
 import { SymbolReader } from './symbol-reader.js';
@@ -97,6 +98,8 @@ export class LaptopDaemon {
   private stopPromise: Promise<void> | undefined;
   private runnerRegistered = false;
   private managedAutonomy = false;
+  /** Authority only: the room's work allocation. */
+  private planner: Planner | undefined;
 
   constructor(
     private readonly state: InstallState,
@@ -211,6 +214,7 @@ export class LaptopDaemon {
   private async stopOnce(): Promise<void> {
     clearInterval(this.heartbeat);
     clearInterval(this.idleTick);
+    this.planner?.stop();
     for (const watcher of this.watchers.values()) await watcher.stop();
     await this.announceSessionEnded();
     await this.transport.stop();
@@ -326,6 +330,7 @@ export class LaptopDaemon {
       presence: this.presenceSnapshot(),
       summary: this.roomState.teamSummary,
       runner: { registered: this.runnerRegistered, autonomous: this.managedAutonomy },
+      ...(this.planner?.plan ? { plan: this.planner.plan } : {}),
       ...(authority?.inviteUri ? { invite: authority.inviteUri } : {}),
     };
   }
@@ -357,6 +362,18 @@ export class LaptopDaemon {
       setImmediate(this.requestShutdown);
       return { ok: true, output: { shuttingDown: true } };
     }
+    if (request.type === 'plan') {
+      if (!this.planner) {
+        return {
+          ok: false,
+          error:
+            'the planner runs on the authority laptop; ask there, or unset AGENTIGRAM_PLANNER=off',
+        };
+      }
+      if (request.replan) await this.planner.replan();
+      return { ok: true, output: this.planner.plan ?? null };
+    }
+    if (request.type === 'git') return this.handleGit(request.action, request.paths);
     if (request.type === 'runner_register') {
       if (request.sessionId !== this.state.sessionId) return this.wrongRunnerSession();
       this.runnerRegistered = true;
@@ -676,6 +693,48 @@ export class LaptopDaemon {
     return { ok: true, output: { accepted: true, eventId: event.id, type: event.payload.type } };
   }
 
+  /**
+   * A commit, reported by the repository's own `prepare-commit-msg` hook.
+   *
+   * An agent host reports `git commit` as a shell command and nothing more, so without this the
+   * room sees the words and not the change. The staged paths are published as writes — which is
+   * what they are — so collision detection and the planner both see work that never went through
+   * an edit tool.
+   */
+  private async handleGit(action: 'commit', paths: string[]): Promise<IpcResponse> {
+    const unique = [...new Set(paths.map(normalisePath))].filter((path) => path.length > 0);
+    if (unique.length === 0) return { ok: true, output: { published: 0 } };
+    const base = () => ({
+      id: crypto.randomUUID(),
+      roomId: this.state.roomId,
+      actor: {
+        engineerId: this.state.engineerId,
+        sessionId: this.state.sessionId,
+        kind: 'agent' as const,
+      },
+      source: 'watcher' as const,
+    });
+    await this.publishObserved(
+      {
+        ...base(),
+        payload: { type: 'TOOL_CALL', tool: `git ${action}`, phase: 'post', paths: unique, ok: true },
+      },
+      this.state.root,
+    );
+    for (const path of unique) {
+      this.recordAgentWrite(path);
+      this.symbols.markDirty([path]);
+      await this.publishObserved(
+        this.attachFencingToken({
+          ...base(),
+          payload: { type: 'FILE_WRITE', path, worktree: this.state.root },
+        }),
+        this.state.root,
+      );
+    }
+    return { ok: true, output: { published: unique.length } };
+  }
+
   private parseHook(input: unknown): HookInput {
     if (this.state.host === 'codex') return CodexHookInputSchema.parse(input);
     if (this.state.host === 'gemini-cli') return GeminiHookInputSchema.parse(input);
@@ -747,27 +806,33 @@ export class LaptopDaemon {
   }
 
   /**
-   * The orchestrator debates collisions, so it lives where collisions are opened: the authority.
-   * On unless `AGENTIGRAM_ORCHESTRATOR=off`. It uses local Ollama when it answers and scripted
-   * turns when it does not (`AGENTIGRAM_ORCHESTRATOR=scripted` skips Ollama entirely).
+   * The orchestrator debates collisions and allocates the room's work, so it lives where the whole
+   * room's state is: the authority. On unless `AGENTIGRAM_ORCHESTRATOR=off`. It uses local Ollama
+   * when it answers and scripted turns when it does not (`AGENTIGRAM_ORCHESTRATOR=scripted` skips
+   * Ollama entirely). `AGENTIGRAM_PLANNER=off` keeps the collision debate but leaves allocation
+   * to the agents themselves.
    */
   private startOrchestrator(): void {
     const mode = process.env.AGENTIGRAM_ORCHESTRATOR ?? 'on';
     if (mode === 'off' || !(this.transport instanceof AuthorityTransport)) return;
     const transport = this.transport;
-    const orchestrator = new Orchestrator(
-      {
-        roomId: this.state.roomId,
-        engineerId: this.state.engineerId,
-        state: () => this.roomState,
-        submit: (event) =>
-          transport.submitAsAuthority({ ...event, payload: redactPayload(event.payload) }),
-        log: this.log,
-      },
-      { ...(mode === 'scripted' ? {} : { llm: new OllamaClient() }) },
-    );
+    const host = {
+      roomId: this.state.roomId,
+      engineerId: this.state.engineerId,
+      state: () => this.roomState,
+      submit: (event: NewEvent) =>
+        transport.submitAsAuthority({ ...event, payload: redactPayload(event.payload) }),
+      log: this.log,
+    };
+    const llm = mode === 'scripted' ? {} : { llm: new OllamaClient() };
+    const orchestrator = new Orchestrator(host, llm);
     transport.onEvents((events) => orchestrator.handle(events));
     orchestrator.resume();
+
+    if (process.env.AGENTIGRAM_PLANNER === 'off') return;
+    const planner = new Planner(host, llm);
+    this.planner = planner;
+    transport.onEvents((events) => planner.handle(events));
   }
 
   private attachFencingToken(event: NewEvent): NewEvent {
@@ -945,6 +1010,10 @@ function describeActivity(payload: Event['payload']): string {
       return `editing ${basename(payload.path)}`;
     case 'TOOL_CALL': {
       if (payload.tool === 'HumanPrompt') return 'given a new prompt';
+      if (payload.tool.startsWith('git ')) {
+        const count = payload.paths?.length ?? 0;
+        return `${payload.tool}${count ? ` (${count} file${count === 1 ? '' : 's'})` : ''}`;
+      }
       // A file it touched beats naming the tool: "looking at checkout.ts" is
       // what a person wants to know, not which binary produced it.
       if (payload.paths?.length) {

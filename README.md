@@ -42,6 +42,19 @@ A proposal is only sent when a human presses <kbd>enter</kbd>: it lands in a tea
 on another machine, and a 1B model's output is not something to inject unreviewed.
 See [`apps/tui/README.md`](apps/tui/README.md).
 
+## Nobody has to announce anything
+
+An orchestrator on the authority laptop watches what every agent actually reads and writes and
+allocates the room from it: one owner per file, a lease on the contested ones, and a directed brief
+telling each agent what it owns and what it must not touch. The second agent to reach a shared file
+is then stopped at its own PreToolUse hook rather than discovered afterwards in a merge.
+
+It runs on local Ollama and falls back to a deterministic allocation when there is no model — and
+even with one, the model may only reorder ownership and write the prose. Files, symbols and the
+avoid list are recomputed from what the room observed, so a hallucinated path or session id changes
+nothing. `agg plan` prints the current allocation; see
+[`apps/daemon/README.md`](apps/daemon/README.md#the-orchestrator).
+
 ## Quick start
 
 Install Node 22 or newer (`.nvmrc` pins 22), then run one setup command from the repository root:
@@ -63,6 +76,7 @@ agg join '<invite>' payments --host codex # each additional laptop
 agg start                             # launch the terminal UI (`agg tui` also works)
 agg speech-test                       # download/test QVAC speech and macOS audio
 agg run --autonomous --prompt 'Work on the assigned task' # managed Codex/Claude wakeups
+agg plan                              # who the orchestrator says owns what
 agg status                            # inspect the room/daemon
 agg leave                             # stop and restore local host configuration
 ```
@@ -94,7 +108,7 @@ Other useful commands:
 
 ```bash
 
-# One-laptop P2P smoke test: 4 peers, a lease denial and a tier-1 collision
+# One-laptop P2P demo: 4 peers, an allocated plan, a lease denial and a tier-1 collision
 agg demo --scenario user-id-uuid --peers 4
 
 # Local transparent macOS window (the older Electron shell)

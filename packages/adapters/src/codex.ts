@@ -2,6 +2,7 @@ import { relative, resolve, sep } from 'node:path';
 import type { NewEvent } from '@agentigram/protocol';
 import { z } from 'zod';
 import type { AdapterContext, AgentAdapter } from './registry.js';
+import { shellActivity } from './shell.js';
 
 const hookNames = [
   'SessionStart',
@@ -147,6 +148,36 @@ export class CodexAdapter implements AgentAdapter {
             worktree: context.worktree ?? input.cwd,
           },
         }));
+      }
+      // Shell edits. Codex works through the shell by default, so `sed -i`, a
+      // redirect or a `git checkout` is its normal way of changing a file.
+      const shell = shellActivity(
+        typeof input.tool_input?.command === 'string' ? input.tool_input.command : undefined,
+      );
+      const shellWrites = shell.writes
+        .map((path) => repoPath(input.cwd, path))
+        .filter((path): path is string => Boolean(path));
+      if (shellWrites.length > 0 || shell.git) {
+        return [
+          {
+            ...base(),
+            payload: {
+              type: 'TOOL_CALL',
+              tool: shell.git ?? input.tool_name ?? 'shell',
+              phase: 'post',
+              ...(shellWrites.length ? { paths: shellWrites } : {}),
+              ok: true,
+            },
+          },
+          ...shellWrites.map((path) => ({
+            ...base(),
+            payload: {
+              type: 'FILE_WRITE' as const,
+              path,
+              worktree: context.worktree ?? input.cwd,
+            },
+          })),
+        ];
       }
       // Reads. An MCP filesystem tool names its file directly; the shell does
       // not, so the command line has to be read for it.

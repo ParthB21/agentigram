@@ -14,10 +14,47 @@ agg create backend --host claude
 agg join '<invite>' payments --host codex
 agg start                           # Bare/Pear TUI; `agg tui` is equivalent
 agg status
+agg plan                            # who the orchestrator says owns what
+agg plan --now                      # recompute and announce it immediately
 agg leave
 ```
 
 The previous `pnpm agentigram ...`, `--root`, and `--session` forms remain supported.
+
+## The orchestrator
+
+Two parts, both authority-only, both using local Ollama with a deterministic fallback for every
+answer, so a laptop with no model behaves the same way with plainer words.
+
+- **Allocation** (`src/orchestrator/plan.ts`, `planner.ts`). Rebuilt on every change to the room's
+  read and write sets: one owner per file, the contested ones leased, everyone else told to stay
+  off. It publishes as `INTENT` (only for a session that has not declared one itself),
+  `LEASE_REQUESTED` + `LEASE_GRANTED`, and one directed `MESSAGE` per agent at `automationDepth: 0`
+  so a managed runner wakes on it. The announced intent is also what lifts a write from a tier-0
+  overlap to a tier-1 `PREDICTED` collision, since `collide.ts` narrows a `FILE_WRITE` to the
+  symbols that session declared.
+- **Negotiation** (`src/orchestrator/orchestrator.ts`). On a tier-1+ collision it voices both sides
+  through PROPOSAL / COUNTER / ACCEPT and compiles the contract. `freeze.ts` denies writes to the
+  contested paths until the negotiation is `Accepted`.
+
+The model may reorder ownership and write the prose; the file, symbol and avoid lists are
+recomputed from observed state afterwards (CLAUDE.md rule 4), so a hallucinated path, session or
+symbol key changes nothing.
+
+| Variable | Effect |
+| --- | --- |
+| `AGENTIGRAM_ORCHESTRATOR` | `on` (default), `scripted` (no Ollama), `off` (neither part runs) |
+| `AGENTIGRAM_PLANNER` | `off` keeps the collision debate but stops allocation |
+| `OLLAMA_HOST` | default `http://127.0.0.1:11434` |
+| `AGENTIGRAM_ORCH_MODEL` | default `llama3.2` |
+
+## What the room sees of the shell
+
+Hosts report their own edit tools and nothing else, so `packages/adapters/src/shell.ts` reads the
+command line for writes — redirects, `tee`, `sed -i`, `mv`/`cp`/`rm`/`touch` — and names the git
+subcommand that changed the tree. The repository's `prepare-commit-msg` hook calls
+`agg git-event commit`, which publishes the staged paths; it is best-effort, always exits 0, and is
+restored on `agg leave`.
 
 ## Verified external interfaces
 

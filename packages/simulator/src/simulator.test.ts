@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
 import { Room, type Sink } from './room.js';
 import { checkScenario, runScenario } from './scenario.js';
+import { orchestratorPlan } from './scenarios/orchestrator-plan.js';
 import { userIdUuid } from './scenarios/user-id-uuid.js';
 import { createMockCoordinator } from './server.js';
 
@@ -39,6 +40,25 @@ describe('user-id-uuid scenario', () => {
   it('is deterministic', () => {
     expect(runScenario(userIdUuid)).toEqual(runScenario(userIdUuid));
   });
+});
+
+describe('orchestrator-plan scenario', () => {
+  it('has stable, unique event ids', () => {
+    expect(new Set(orchestratorPlan.steps.map((s) => s.event.id)).size).toBe(
+      orchestratorPlan.steps.length,
+    );
+  });
+
+  it('satisfies its own assertions through the real reducer', () => {
+    expect(checkScenario(orchestratorPlan, runScenario(orchestratorPlan))).toEqual([]);
+  });
+
+  it('is deterministic', () => {
+    expect(runScenario(orchestratorPlan)).toEqual(runScenario(orchestratorPlan));
+  });
+});
+
+describe('user-id-uuid routing', () => {
 
   it('never routes dashboard-only events to agents (rule 5)', () => {
     const room = new Room('r', () => 1);

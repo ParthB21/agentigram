@@ -3,6 +3,7 @@ import type { NewEvent, SymbolKey } from '@agentigram/protocol';
 import { z } from 'zod';
 import { redactSecrets } from './redact.js';
 import type { AdapterContext, AgentAdapter } from './registry.js';
+import { shellActivity } from './shell.js';
 
 const hookNames = [
   'SessionStart',
@@ -136,17 +137,31 @@ export class ClaudeCodeAdapter implements AgentAdapter {
             0,
             MAX_TOOL_SUMMARY_CHARS,
           );
+          // A shell edit is still an edit: without this, an agent that works through `sed -i`,
+          // a redirect or `git checkout` is invisible to collision detection.
+          const shell = shellActivity(typeof command === 'string' ? command : undefined);
+          const writes = shell.writes
+            .map((path) => repoPath(input.cwd, path))
+            .filter((path): path is string => Boolean(path));
           return [
             {
               ...base(),
               payload: {
                 type: 'TOOL_CALL',
-                tool: summary ? `Bash: ${summary}` : 'Bash',
+                tool: shell.git ?? (summary ? `Bash: ${summary}` : 'Bash'),
                 phase: 'post',
-                paths: paths.length ? paths : undefined,
+                paths: writes.length ? writes : paths.length ? paths : undefined,
                 ok: true,
               },
             },
+            ...writes.map((path) => ({
+              ...base(),
+              payload: {
+                type: 'FILE_WRITE' as const,
+                path,
+                worktree: ctx.worktree ?? input.cwd,
+              },
+            })),
           ];
         }
         return [];

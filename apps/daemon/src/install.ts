@@ -259,9 +259,18 @@ function mergeGeminiSettings(root: string): string {
   )}\n`;
 }
 
+/**
+ * Report commits to the room.
+ *
+ * An agent host reports `git commit` as a shell command and never says what it contained, so a
+ * commit is the one change the room could not see. Git itself can: this hook hands the daemon the
+ * staged paths. It never fails a commit — every line ends in a way that leaves `$?` clean, and the
+ * final `exit 0` covers the rest — and `agg leave` restores whatever was here before.
+ */
 function installGitHook(root: string): void {
   const hook = join(root, GIT_HOOK_PATH);
   const original = join(root, ORIGINAL_HOOK_PATH);
+  const executable = fileURLToPath(new URL('../bin/agentigram.mjs', import.meta.url));
   mkdirSync(dirname(hook), { recursive: true });
   if (existsSync(hook)) {
     writeFileSync(original, readFileSync(hook));
@@ -271,6 +280,7 @@ function installGitHook(root: string): void {
     '#!/bin/sh',
     '# Managed by Agentigram. Restored exactly by `agg leave`.',
     `[ -x "${original}" ] && "${original}" "$@"`,
+    `"${process.execPath.replaceAll('\\', '/')}" "${executable.replaceAll('\\', '/')}" git-event commit --root "${root.replaceAll('\\', '/')}" >/dev/null 2>&1 || true`,
     'exit 0',
     '',
   ].join('\n');

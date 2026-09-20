@@ -6,3 +6,4 @@ export * from './health.js';
 export * from './peer-data.js';
 export * from './redact.js';
 export * from './registry.js';
+export * from './shell.js';

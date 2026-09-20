@@ -101,8 +101,27 @@ const NarrateRequestSchema = z.object({
     .min(1)
     .max(20),
 });
+/**
+ * Read the room's work allocation, or force a fresh one. Authority-only: the planner sees the
+ * whole room, and a peer would only ever allocate against a partial picture.
+ */
+const PlanRequestSchema = z.object({
+  type: z.literal('plan'),
+  replan: z.boolean().optional(),
+});
+/**
+ * A git action the hooks cannot see. Claude Code reports `git commit` only as the shell command
+ * that ran; the repository's own `prepare-commit-msg` hook reports what it actually touched.
+ */
+const GitRequestSchema = z.object({
+  type: z.literal('git'),
+  action: z.enum(['commit']),
+  paths: z.array(z.string().min(1)).max(200),
+});
 export const IpcRequestSchema = z.discriminatedUnion('type', [
   HookRequestSchema,
+  PlanRequestSchema,
+  GitRequestSchema,
   StatusRequestSchema,
   ShutdownRequestSchema,
   HumanRequestSchema,
