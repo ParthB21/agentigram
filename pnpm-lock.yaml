@@ -63,6 +63,9 @@ importers:
       '@agentigram/p2p':
         specifier: workspace:*
         version: link:../../packages/p2p
+      '@agentigram/personas':
+        specifier: workspace:*
+        version: link:../../packages/personas
       '@agentigram/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol

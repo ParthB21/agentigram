@@ -61,9 +61,15 @@ export const Bug = payload('BUG', {
   symbols: z.array(SymbolKeySchema).optional(),
   files: z.array(z.string()).optional(),
 });
+export const MAX_AUTOMATION_DEPTH = 3;
+export const MAX_MESSAGE_TEXT_LENGTH = 2000;
+
 export const Message = payload('MESSAGE', {
-  to: z.string(), // a sessionId, or 'all'
-  text: z.string(),
+  to: z.string().min(1).max(128), // a sessionId, or 'all'
+  text: z.string().min(1).max(MAX_MESSAGE_TEXT_LENGTH),
   collisionId: z.string().optional(),
+  conversationId: z.string().min(1).max(128).optional(),
+  replyToSeq: z.number().int().nonnegative().optional(),
+  automationDepth: z.number().int().min(0).max(MAX_AUTOMATION_DEPTH).optional(),
 });
 export const CompleteClaimed = payload('COMPLETE_CLAIMED', { summary: z.string() });

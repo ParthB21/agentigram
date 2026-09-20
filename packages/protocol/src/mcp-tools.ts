@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { ContractSchema } from './contract.js';
+import { MAX_MESSAGE_TEXT_LENGTH } from './payloads-observed.js';
 import { SymbolKeySchema } from './symbols.js';
 
 /** MCP tool inputs (spec → "MCP tools"). Only what agents must declare; the rest is observed. */
@@ -12,7 +13,7 @@ export const McpToolInputs = {
   }),
   report: z.object({
     kind: z.enum(['discovery', 'blocker', 'bug']),
-    text: z.string().max(2000),
+    text: z.string().min(1).max(MAX_MESSAGE_TEXT_LENGTH),
     symbols: z.array(SymbolKeySchema).max(50).optional(),
   }),
   message_agent: z.object({

@@ -45,7 +45,14 @@ const samples: Record<Payload['type'], Payload> = {
   DISCOVERY: { type: 'DISCOVERY', text: 'x' },
   BLOCKER: { type: 'BLOCKER', text: 'x' },
   BUG: { type: 'BUG', text: 'x' },
-  MESSAGE: { type: 'MESSAGE', to: 'all', text: 'hi' },
+  MESSAGE: {
+    type: 'MESSAGE',
+    to: 'all',
+    text: 'hi',
+    conversationId: 'conversation-1',
+    replyToSeq: 3,
+    automationDepth: 2,
+  },
   COMPLETE_CLAIMED: { type: 'COMPLETE_CLAIMED', summary: 's' },
   LEASE_REQUESTED: { type: 'LEASE_REQUESTED', symbols: [sym], ttlMs: 600000 },
   LEASE_GRANTED: {
@@ -160,6 +167,17 @@ describe('payload union', () => {
   it('rejects an envelope with a bad actor kind', () => {
     const bad = { ...envelope(samples.HEARTBEAT), actor: { engineerId: 'e', kind: 'robot' } };
     expect(EventSchema.safeParse(bad).success).toBe(false);
+  });
+
+  it('bounds automated message depth', () => {
+    expect(
+      PayloadSchema.safeParse({ type: 'MESSAGE', to: 'backend', text: 'reply', automationDepth: 3 })
+        .success,
+    ).toBe(true);
+    expect(
+      PayloadSchema.safeParse({ type: 'MESSAGE', to: 'backend', text: 'reply', automationDepth: 4 })
+        .success,
+    ).toBe(false);
   });
 });
 

@@ -24,7 +24,7 @@ import { type CoreLogReader, P2PRoomTransport, type RoomTransport } from '@agent
 import {
   type Event,
   emptyRoomState,
-  isAgentVisible,
+  MAX_AUTOMATION_DEPTH,
   type NewEvent,
   NewEventSchema,
   type RoomState,
@@ -32,7 +32,10 @@ import {
 import { reduce, routeEvent, sessionPresence } from '@agentigram/reducer';
 import pino from 'pino';
 import { AuthorityTransport } from './authority-transport.js';
+import { autonomousDenial } from './autonomous-guard.js';
 import { CursorStore } from './cursor-store.js';
+import { speechMetadata } from './event-rendering.js';
+import { isFreshEvent, shouldRouteToInbox, shouldWake, WakeInbox } from './inbox.js';
 import type { InstallState } from './install.js';
 import { createIpcServer, type IpcFrame, type IpcRequest, type IpcResponse } from './ipc.js';
 import { isPipe } from './runtime.js';
@@ -55,20 +58,6 @@ const IDLE_TICK_MS = 5_000;
 /** Liveness, not work. A heartbeat must not make an idle agent look busy. */
 const ACTIVITY_IGNORED = new Set(['HEARTBEAT', 'PERSONA_LINES', 'SESSION_ENDED']);
 const AGENT_WRITE_MATCH_WINDOW_MS = 5_000;
-const MAX_INBOX_EVENTS = 20;
-const ACTIONABLE_TYPES = new Set([
-  'MESSAGE',
-  'COLLISION',
-  'LEASE_DENIED',
-  'PROPOSAL',
-  'COUNTER',
-  'ACCEPT',
-  'ESCALATE',
-  'CONTEXT_PACKET',
-  'CONTEXT_QUERY',
-  'CONTEXT_ANSWER',
-]);
-
 type HookInput = ClaudeHookInput | CodexHookInput | GeminiHookInput | AntigravityHookInput;
 
 function branch(root: string): string {
@@ -87,7 +76,7 @@ export class LaptopDaemon {
   private readonly sessions = new Set<string>();
   private readonly watchers = new Map<string, WorktreeWatcher>();
   private readonly recentAgentWrites = new Map<string, number>();
-  private readonly inbox = new Map<string, string[]>();
+  private readonly inbox = new WakeInbox();
   private readonly subscribers = new Set<(frame: IpcFrame) => void>();
   /** sessionId -> when it last did something, and what. Derived, never stored. */
   private readonly activity = new Map<string, { at: number; what: string }>();
@@ -99,6 +88,8 @@ export class LaptopDaemon {
   private readonly server;
   private heartbeat: NodeJS.Timeout | undefined;
   private idleTick: NodeJS.Timeout | undefined;
+  private runnerRegistered = false;
+  private managedAutonomy = false;
 
   constructor(private readonly state: InstallState) {
     this.symbols = new SymbolReader(state.root, this.log);
@@ -264,6 +255,7 @@ export class LaptopDaemon {
       activity: this.activitySnapshot(),
       presence: this.presenceSnapshot(),
       summary: this.roomState.teamSummary,
+      runner: { registered: this.runnerRegistered, autonomous: this.managedAutonomy },
       ...(authority?.inviteUri ? { invite: authority.inviteUri } : {}),
     };
   }
@@ -290,6 +282,29 @@ export class LaptopDaemon {
 
   private async handle(request: IpcRequest): Promise<IpcResponse> {
     if (request.type === 'status') return { ok: true, output: this.statusOutput() };
+    if (request.type === 'runner_register') {
+      if (request.sessionId !== this.state.sessionId) return this.wrongRunnerSession();
+      this.runnerRegistered = true;
+      this.managedAutonomy = request.autonomous;
+      return { ok: true, output: { registered: true, autonomous: request.autonomous } };
+    }
+    if (request.type === 'runner_unregister') {
+      if (request.sessionId !== this.state.sessionId) return this.wrongRunnerSession();
+      this.runnerRegistered = false;
+      this.managedAutonomy = false;
+      return { ok: true, output: { registered: false } };
+    }
+    if (request.type === 'runner_claim') {
+      if (request.sessionId !== this.state.sessionId) return this.wrongRunnerSession();
+      return { ok: true, output: this.inbox.claim(request.sessionId) ?? null };
+    }
+    if (request.type === 'runner_requeue') {
+      if (request.sessionId !== this.state.sessionId) return this.wrongRunnerSession();
+      return this.inbox.requeue(request.sessionId, request.claimId)
+        ? { ok: true, output: { requeued: true } }
+        : { ok: false, error: 'runner claim was not found' };
+    }
+    if (request.type === 'runner_complete') return this.completeRunnerClaim(request);
     if (request.type === 'narrate') {
       // `PERSONA_LINES` is coordinator-authored: only the authority may put it
       // in the room. On a peer the dialogue stays local to that laptop's own
@@ -410,6 +425,53 @@ export class LaptopDaemon {
     }
     if (contextOutput) return { ok: true, output: contextOutput };
     return { ok: true, output: {} };
+  }
+
+  private wrongRunnerSession(): IpcResponse {
+    return { ok: false, error: 'runner session does not match this daemon' };
+  }
+
+  private async completeRunnerClaim(
+    request: Extract<IpcRequest, { type: 'runner_complete' }>,
+  ): Promise<IpcResponse> {
+    if (request.sessionId !== this.state.sessionId) return this.wrongRunnerSession();
+    const claim = this.inbox.claimed(request.sessionId, request.claimId);
+    if (!claim) return { ok: false, error: 'runner claim was not found' };
+    if (request.outcome === 'no_action') {
+      this.inbox.complete(request.sessionId, request.claimId);
+      return { ok: true, output: { completed: true, replied: false } };
+    }
+    const first = claim.items[0];
+    if (!first || !request.reply) return { ok: false, error: 'runner claim has no reply context' };
+    if (request.reply.to !== first.from) {
+      return { ok: false, error: 'managed replies must return to the originating session' };
+    }
+    const automationDepth = Math.max(...claim.items.map((item) => item.automationDepth)) + 1;
+    if (automationDepth > MAX_AUTOMATION_DEPTH) {
+      return { ok: false, error: 'managed reply exceeds the automation depth limit' };
+    }
+    const causedBy = claim.items.at(-1)?.seq;
+    await this.submit({
+      id: crypto.randomUUID(),
+      roomId: this.state.roomId,
+      actor: {
+        engineerId: this.state.engineerId,
+        sessionId: this.state.sessionId,
+        kind: 'agent',
+      },
+      ...(causedBy !== undefined ? { causedBy } : {}),
+      source: 'mcp',
+      payload: {
+        type: 'MESSAGE',
+        to: request.reply.to,
+        text: request.reply.text,
+        conversationId: first.conversationId,
+        ...(causedBy !== undefined ? { replyToSeq: causedBy } : {}),
+        automationDepth,
+      },
+    });
+    this.inbox.complete(request.sessionId, request.claimId);
+    return { ok: true, output: { completed: true, replied: true, automationDepth } };
   }
 
   private async handleHumanAction(
@@ -546,6 +608,7 @@ export class LaptopDaemon {
   }
 
   private receive(events: Event[]): void {
+    const now = Date.now();
     for (const event of events.sort((a, b) => a.seq - b.seq)) {
       if (event.seq <= this.roomState.lastSeq) continue;
       this.roomState = reduce(this.roomState, event).state;
@@ -556,22 +619,22 @@ export class LaptopDaemon {
       // ordinary replicated events like any other.
       //
       // The room view sees everything this laptop sees, including dashboard-only types.
+      const fresh = isFreshEvent(event, now);
+      const speech = fresh ? speechMetadata(event) : undefined;
       this.broadcast({
         t: 'event',
         seq: event.seq,
         eventType: event.payload.type,
         ...(event.actor.sessionId ? { sessionId: event.actor.sessionId } : {}),
         text: summarise(event),
+        ...(speech ? { speech } : {}),
       });
-      if (
-        isAgentVisible(event.payload.type) &&
-        ACTIONABLE_TYPES.has(event.payload.type) &&
-        event.actor.sessionId !== this.state.sessionId &&
-        routeEvent(this.roomState, event).includes(this.state.sessionId)
-      ) {
-        const current = this.inbox.get(this.state.sessionId) ?? [];
-        current.push(summarise(event));
-        this.inbox.set(this.state.sessionId, current.slice(-MAX_INBOX_EVENTS));
+      const routedSessions = routeEvent(this.roomState, event);
+      if (shouldRouteToInbox(event, this.state.sessionId, routedSessions, now)) {
+        this.inbox.enqueue(this.state.sessionId, event);
+      }
+      if (shouldWake(event, this.state.sessionId, routedSessions, now)) {
+        this.broadcast({ t: 'wake', sessionId: this.state.sessionId, seq: event.seq });
       }
     }
     // One state frame per batch, not per event: the room view only needs the settled result.
@@ -582,9 +645,19 @@ export class LaptopDaemon {
     const paths = (() => {
       if (this.state.host === 'codex') return codexToolPaths(input as CodexHookInput);
       if (this.state.host === 'gemini-cli') return geminiToolPaths(input as GeminiHookInput);
-      if (this.state.host === 'antigravity') return antigravityToolPaths(input as AntigravityHookInput);
+      if (this.state.host === 'antigravity')
+        return antigravityToolPaths(input as AntigravityHookInput);
       return claudeToolPaths(input as ClaudeHookInput);
     })();
+    if (this.managedAutonomy) {
+      const denied = autonomousDenial({
+        root: this.state.root,
+        cwd: input.cwd,
+        paths,
+        command: shellCommand(input),
+      });
+      if (denied) return denied;
+    }
     for (const path of paths) {
       const lease = this.leaseForPath(path);
       if (lease && lease.sessionId !== this.state.sessionId) {
@@ -610,10 +683,13 @@ export class LaptopDaemon {
   }
 
   private drainInbox(sessionId: string): string | undefined {
-    const lines = this.inbox.get(sessionId);
-    if (!lines?.length) return undefined;
-    this.inbox.delete(sessionId);
-    return wrapPeerData({ from: 'room', kind: 'coordination', text: lines.join('\n') });
+    const items = this.inbox.consume(sessionId);
+    if (items.length === 0) return undefined;
+    return wrapPeerData({
+      from: 'room',
+      kind: 'coordination',
+      text: items.map((item) => item.text).join('\n'),
+    });
   }
 
   private syncSummary(): object {
@@ -703,6 +779,11 @@ export class LaptopDaemon {
     await watcher.start();
     this.watchers.set(root, watcher);
   }
+}
+
+function shellCommand(input: HookInput): string | undefined {
+  const command = input.tool_input?.command ?? input.tool_input?.CommandLine;
+  return typeof command === 'string' ? command : undefined;
 }
 
 function requiredInvite(state: InstallState) {

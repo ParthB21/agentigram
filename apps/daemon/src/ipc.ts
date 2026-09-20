@@ -6,7 +6,7 @@ import {
   CodexHookInputSchema,
   GeminiHookInputSchema,
 } from '@agentigram/adapters';
-import { MCP_TOOL_NAMES } from '@agentigram/protocol';
+import { MAX_MESSAGE_TEXT_LENGTH, MCP_TOOL_NAMES } from '@agentigram/protocol';
 import { z } from 'zod';
 import { isPipe } from './runtime.js';
 
@@ -38,6 +38,45 @@ const ToolRequestSchema = z.object({
   args: z.unknown(),
   sessionId: z.string().min(1),
 });
+const RunnerRegisterRequestSchema = z.object({
+  type: z.literal('runner_register'),
+  sessionId: z.string().min(1),
+  autonomous: z.boolean(),
+});
+const RunnerUnregisterRequestSchema = z.object({
+  type: z.literal('runner_unregister'),
+  sessionId: z.string().min(1),
+});
+const RunnerClaimRequestSchema = z.object({
+  type: z.literal('runner_claim'),
+  sessionId: z.string().min(1),
+});
+const RunnerRequeueRequestSchema = z.object({
+  type: z.literal('runner_requeue'),
+  sessionId: z.string().min(1),
+  claimId: z.string().min(1),
+});
+const RunnerCompleteRequestSchema = z
+  .object({
+    type: z.literal('runner_complete'),
+    sessionId: z.string().min(1),
+    claimId: z.string().min(1),
+    outcome: z.enum(['acted', 'no_action', 'blocked']),
+    reply: z
+      .object({
+        to: z.string().min(1).max(128),
+        text: z.string().min(1).max(MAX_MESSAGE_TEXT_LENGTH),
+      })
+      .optional(),
+  })
+  .superRefine((request, context) => {
+    if (request.outcome !== 'no_action' && !request.reply) {
+      context.addIssue({ code: 'custom', message: `${request.outcome} requires a reply` });
+    }
+    if (request.outcome === 'no_action' && request.reply) {
+      context.addIssue({ code: 'custom', message: 'no_action cannot include a reply' });
+    }
+  });
 /** Opens a long-lived stream of room frames instead of a single reply. Used by the Bare/Pear TUI. */
 const SubscribeRequestSchema = z.object({ type: z.literal('subscribe') });
 /**
@@ -65,6 +104,11 @@ export const IpcRequestSchema = z.discriminatedUnion('type', [
   StatusRequestSchema,
   HumanRequestSchema,
   ToolRequestSchema,
+  RunnerRegisterRequestSchema,
+  RunnerUnregisterRequestSchema,
+  RunnerClaimRequestSchema,
+  RunnerRequeueRequestSchema,
+  RunnerCompleteRequestSchema,
   SubscribeRequestSchema,
   NarrateRequestSchema,
   CoreLogRequestSchema,
@@ -75,7 +119,15 @@ export type IpcResponse = { ok: true; output?: unknown } | { ok: false; error: s
 /** A frame pushed down a subscribed socket. Newline-delimited JSON, same framing as requests. */
 export type IpcFrame =
   | { t: 'state'; state: unknown }
-  | { t: 'event'; seq: number; eventType: string; sessionId?: string; text: string };
+  | {
+      t: 'event';
+      seq: number;
+      eventType: string;
+      sessionId?: string;
+      text: string;
+      speech?: { speaker: string; text: string; priority: 0 | 1 | 2 | 3 };
+    }
+  | { t: 'wake'; sessionId: string; seq: number };
 
 /**
  * Newline-delimited JSON. Consumes each complete line and keeps the remainder buffered, so a
