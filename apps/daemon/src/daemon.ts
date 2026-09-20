@@ -318,13 +318,19 @@ export class LaptopDaemon {
       branch: branch(input.cwd),
       worktree: input.cwd,
     });
+    // Publish without blocking the hook's reply. Nothing the host is waiting
+    // for depends on the event reaching the room, and resolving the symbols
+    // behind a read means querying the TypeScript index — easily longer than a
+    // host will wait. A hook that overruns has its output discarded, which is
+    // what was dropping reads and leaving every read set empty. The daemon
+    // outlives the hook process, so the work still completes.
     for (const event of events) {
       const guarded = this.attachFencingToken(event);
       if (guarded.payload.type === 'FILE_WRITE') {
         this.recordAgentWrite(guarded.payload.path);
         this.symbols.markDirty([guarded.payload.path]);
       }
-      await this.submit(this.attachReadSymbols(guarded, input.cwd));
+      void this.publishObserved(guarded, input.cwd);
     }
     if (input.hook_event_name === 'SessionEnd') this.sessions.delete(sessionId);
     if (input.hook_event_name === 'SessionStart') {
@@ -567,6 +573,21 @@ export class LaptopDaemon {
     const symbols = this.symbols.read([event.payload.path], cwd);
     if (symbols.length === 0) return event;
     return { ...event, payload: { ...event.payload, symbols } };
+  }
+
+  /**
+   * Resolve a read's symbols and publish it, off the hook's critical path.
+   * Failures are logged, never thrown: there is no caller left to catch them.
+   */
+  private async publishObserved(event: NewEvent, cwd: string): Promise<void> {
+    try {
+      await this.submit(this.attachReadSymbols(event, cwd));
+    } catch (error) {
+      this.log.warn(
+        { err: error instanceof Error ? error.message : String(error), type: event.payload.type },
+        'could not publish an observed event',
+      );
+    }
   }
 
   private async submit(event: NewEvent): Promise<void> {

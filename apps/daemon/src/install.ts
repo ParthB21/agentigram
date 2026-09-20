@@ -22,6 +22,13 @@ const GEMINI_SETTINGS_PATH = join('.gemini', 'settings.json');
 const GIT_HOOK_PATH = join('.git', 'hooks', 'prepare-commit-msg');
 const ORIGINAL_HOOK_PATH = `${GIT_HOOK_PATH}.agentigram-original`;
 const MCP_SERVER_NAME = 'agentigram';
+/**
+ * Whole seconds, per every host's hook schema. Generous on purpose: this is the
+ * ceiling before a host gives up and discards the hook's output, not a delay
+ * anyone waits for. The daemon answers in milliseconds once it is warm; the
+ * cost being covered here is Node plus tsx starting up.
+ */
+const HOOK_TIMEOUT_S = 10;
 const OTLP_ENDPOINT = 'http://127.0.0.1:4318';
 
 type FileSnapshot = { exists: boolean; content?: string; mode?: number };
@@ -89,13 +96,19 @@ function mergeSettings(root: string, socketPath: string): string {
     timeout,
   });
   const hooks = { ...(settings.hooks as Record<string, unknown> | undefined) };
+  // Timeouts are whole seconds. One second is not enough: the hook command
+  // boots Node and tsx (which transpiles the CLI) before it has said anything,
+  // and that alone can exceed a second cold. A hook that times out has its
+  // output discarded, so reads were being dropped and no read set was ever
+  // built. The daemon still bounds its own work — PRE_TOOL_TIMEOUT_MS keeps an
+  // edit decision fast — so these are ceilings, not delays anyone waits for.
   for (const [event, matcher, timeout] of [
-    ['SessionStart', undefined, 1],
-    ['UserPromptSubmit', undefined, 1],
-    ['PreToolUse', 'Edit|Write|MultiEdit|Bash', 1],
-    ['PostToolUse', 'Read|Grep|Glob|Edit|Write|MultiEdit|Bash', 1],
-    ['Stop', undefined, 1],
-    ['SessionEnd', undefined, 1],
+    ['SessionStart', undefined, HOOK_TIMEOUT_S],
+    ['UserPromptSubmit', undefined, HOOK_TIMEOUT_S],
+    ['PreToolUse', 'Edit|Write|MultiEdit|Bash', HOOK_TIMEOUT_S],
+    ['PostToolUse', 'Read|Grep|Glob|Edit|Write|MultiEdit|Bash', HOOK_TIMEOUT_S],
+    ['Stop', undefined, HOOK_TIMEOUT_S],
+    ['SessionEnd', undefined, HOOK_TIMEOUT_S],
   ] as const) {
     const current = Array.isArray(hooks[event]) ? hooks[event] : [];
     hooks[event] = [
@@ -149,12 +162,12 @@ function mergeCodexHooks(root: string): string {
     [process.execPath, executable, 'hook', event, '--root', root].map(shellQuote).join(' ');
   const hooks = { ...(config.hooks as Record<string, unknown> | undefined) };
   for (const [event, matcher, timeout] of [
-    ['SessionStart', undefined, 3],
-    ['UserPromptSubmit', undefined, 3],
-    ['PreToolUse', 'Bash|apply_patch|Edit|Write', 3],
-    ['PostToolUse', 'Bash|apply_patch|Edit|Write', 3],
-    ['Stop', undefined, 3],
-    ['SessionEnd', undefined, 3],
+    ['SessionStart', undefined, HOOK_TIMEOUT_S],
+    ['UserPromptSubmit', undefined, HOOK_TIMEOUT_S],
+    ['PreToolUse', 'Bash|apply_patch|Edit|Write', HOOK_TIMEOUT_S],
+    ['PostToolUse', 'Bash|apply_patch|Edit|Write', HOOK_TIMEOUT_S],
+    ['Stop', undefined, HOOK_TIMEOUT_S],
+    ['SessionEnd', undefined, HOOK_TIMEOUT_S],
   ] as const) {
     const current = Array.isArray(hooks[event]) ? hooks[event] : [];
     hooks[event] = [
