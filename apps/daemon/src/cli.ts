@@ -51,6 +51,26 @@ function host(value: string): InstallState['host'] {
   throw new Error('--host must be claude, codex, gemini, or antigravity');
 }
 
+function defaultHost(fallback: string): string {
+  if (process.env.AGENTIGRAM_HOST) return process.env.AGENTIGRAM_HOST;
+  if (process.env.CODEX_THREAD_ID || process.env.CODEX_SESSION_ID || process.env.CODEX_CI)
+    return 'codex';
+  if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT) return 'claude';
+  if (process.env.GEMINI_CLI || process.env.GEMINI_CLI_HOME) return 'gemini';
+  return fallback;
+}
+
+function sessionName(positional?: string, option?: string): string {
+  if (positional && option && positional !== option) {
+    throw new Error('pass the session name once, either positionally or with --session');
+  }
+  const selected = positional ?? option;
+  if (!selected) {
+    throw new Error('a session name is required (for example: agg create backend)');
+  }
+  return selected;
+}
+
 function verifyHost(value: InstallState['host']): void {
   // Antigravity runs embedded in the IDE — no standalone binary to probe.
   if (value === 'antigravity') return;
@@ -184,43 +204,67 @@ async function waitForDaemon(state: InstallState): Promise<Record<string, unknow
     }
   }
   throw new Error(
-    'daemon did not become ready; run `agentigram daemon --root <path>` to inspect logs',
+    'daemon did not become ready; run `agg daemon --root <path>` to inspect logs',
   );
 }
 
 export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? process.cwd()): Command {
   const defaultRoot = resolve(invocationDirectory);
   const resolveRoot = (root: string) => resolveRepositoryRoot(root, defaultRoot);
-  const program = new Command('agentigram')
+  const program = new Command('agg')
     .description('Agentigram: autonomous coding-agent coordination across laptops.')
     .version('0.2.0');
 
   program
-    .command('create')
+    .command('setup')
+    .description('Install dependencies, warm the local model, and link the agg command.')
+    .option('--skip-model', 'install without downloading the local model')
+    .option('--skip-link', 'install without creating the global agg command')
+    .action((options: { skipModel?: boolean; skipLink?: boolean }) => {
+      const setup = fileURLToPath(new URL('../../../scripts/setup.mjs', import.meta.url));
+      const result = spawnSync(
+        process.execPath,
+        [
+          setup,
+          ...(options.skipModel ? ['--skip-model'] : []),
+          ...(options.skipLink ? ['--skip-link'] : []),
+        ],
+        { stdio: 'inherit' },
+      );
+      if (result.error) throw result.error;
+      if (result.status) process.exitCode = result.status;
+    });
+
+  program
+    .command('create [session]')
     .description('Create a P2P room on this authority laptop.')
     .option('--root <path>', 'repository root', defaultRoot)
     .option('--room <id>', 'room identifier', 'hackathon')
-    .requiredOption('--session <id>', 'local agent session name')
-    .option('--host <host>', 'claude, codex, gemini, or antigravity', 'claude')
+    .option('--session <id>', 'local agent session name (legacy form)')
+    .option('--host <host>', 'claude, codex, gemini, or antigravity', defaultHost('claude'))
     .option('--engineer <id>', 'engineer identifier')
     .action(
-      async (options: {
-        root: string;
-        room: string;
-        session: string;
-        host: string;
-        engineer?: string;
-      }) => {
+      async (
+        session: string | undefined,
+        options: {
+          root: string;
+          room: string;
+          session?: string;
+          host: string;
+          engineer?: string;
+        },
+      ) => {
         const root = resolveRoot(options.root);
         verifyRepository(root);
         const selectedHost = host(options.host);
+        const selectedSession = sessionName(session, options.session);
         verifyHost(selectedHost);
         const state = install({
           root,
           roomId: options.room,
           mode: 'authority',
           host: selectedHost,
-          sessionId: options.session,
+          sessionId: selectedSession,
           repositoryFingerprint: repositoryFingerprint(root),
           capability: createCapability(),
           engineerId: options.engineer,
@@ -232,23 +276,28 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         if (selectedHost === 'codex')
           console.log('Open /hooks in Codex and trust the Agentigram hooks.');
         if (selectedHost === 'gemini-cli')
-          console.log('Start Gemini CLI in this repository; Agentigram hooks and MCP are installed.');
+          console.log(
+            'Start Gemini CLI in this repository; Agentigram hooks and MCP are installed.',
+          );
         if (selectedHost === 'antigravity')
-          console.log('Agentigram hooks and MCP are installed. Antigravity (agy) will coordinate automatically.');
+          console.log(
+            'Agentigram hooks and MCP are installed. Antigravity (agy) will coordinate automatically.',
+          );
       },
     );
 
   program
-    .command('join <invite>')
+    .command('join <invite> [session]')
     .description('Join a P2P room from another laptop.')
     .option('--root <path>', 'repository root', defaultRoot)
-    .requiredOption('--session <id>', 'local agent session name')
-    .option('--host <host>', 'claude, codex, gemini, or antigravity', 'antigravity')
+    .option('--session <id>', 'local agent session name (legacy form)')
+    .option('--host <host>', 'claude, codex, gemini, or antigravity', defaultHost('antigravity'))
     .option('--engineer <id>', 'engineer identifier')
     .action(
       async (
         inviteUri: string,
-        options: { root: string; session: string; host: string; engineer?: string },
+        session: string | undefined,
+        options: { root: string; session?: string; host: string; engineer?: string },
       ) => {
         const root = resolveRoot(options.root);
         verifyRepository(root);
@@ -258,13 +307,14 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           throw new Error('this invite belongs to a different Git repository');
         }
         const selectedHost = host(options.host);
+        const selectedSession = sessionName(session, options.session);
         verifyHost(selectedHost);
         const state = install({
           root,
           roomId: invite.roomId,
           mode: 'peer',
           host: selectedHost,
-          sessionId: options.session,
+          sessionId: selectedSession,
           repositoryFingerprint: fingerprint,
           invite,
           engineerId: options.engineer,
@@ -275,9 +325,13 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         if (selectedHost === 'codex')
           console.log('Open /hooks in Codex and trust the Agentigram hooks.');
         if (selectedHost === 'gemini-cli')
-          console.log('Start Gemini CLI in this repository; Agentigram hooks and MCP are installed.');
+          console.log(
+            'Start Gemini CLI in this repository; Agentigram hooks and MCP are installed.',
+          );
         if (selectedHost === 'antigravity')
-          console.log('Agentigram hooks and MCP are installed. Antigravity (agy) will coordinate automatically.');
+          console.log(
+            'Agentigram hooks and MCP are installed. Antigravity (agy) will coordinate automatically.',
+          );
       },
     );
 
@@ -404,6 +458,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
 
   program
     .command('tui')
+    .alias('start')
     .description('Open the Bare/Pear room view with on-device QVAC negotiation.')
     .option('--root <path>', 'repository root', defaultRoot)
     .option('--model <name>', 'QVAC model constant to load')
@@ -430,7 +485,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           reject(
             new Error(
               `could not start Bare (${error.message}). Install it with ` +
-                '`npm i -g bare-runtime`, or run `npm install` in apps/tui.',
+                '`npm i -g bare-runtime`, or run `agg setup`.',
             ),
           ),
         );

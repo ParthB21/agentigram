@@ -53,13 +53,13 @@ pnpm --filter @agentigram/<pkg> test
 pnpm sim                           # mock coordinator on ws://localhost:8787 + default scenario
 pnpm sim --scenario user-id-uuid   # replay the canonical demo scenario
                                    # flags: --port 8787 --room hackathon --speed 1 --no-play --list
-pnpm agentigram --help            # the daemon CLI (dev launcher through tsx)
-pnpm agentigram demo --peers 4    # real P2P smoke test on one laptop
-pnpm agentigram create --root . --session backend --host claude
-pnpm agentigram join '<invite>' --root . --session payments --host codex
+agg --help                         # short CLI installed by `npm run setup`
+agg demo --peers 4                 # real P2P smoke test on one laptop
+agg create backend --host claude
+agg join '<invite>' payments --host codex
 pnpm --filter @agentigram/web dev # dashboard at http://localhost:3000/team/hackathon
 
-pnpm agentigram tui --root .      # the Bare/Pear room view with on-device QVAC negotiation
+agg start                          # the Bare/Pear room view with on-device QVAC negotiation
 ```
 
 No Turborepo or Nx. `pnpm -r` / `pnpm --filter` only — **except `apps/tui`**, which is a Bare/Pear

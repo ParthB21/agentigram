@@ -39,8 +39,8 @@ if (cmd.flags.version) {
 const socket = cmd.flags.socket || process.env.AGENTIGRAM_SOCKET
 if (!socket) {
   console.error(
-    'No daemon socket. Run `agentigram tui --root <repo>`, or pass --socket <path>.\n' +
-      'Start a room first with `agentigram create --root <repo>`.'
+    'No daemon socket. Run `agg start` from the repository, or pass --socket <path>.\n' +
+      'Start a room first with `agg create <session>`.'
   )
   Bare.exit(1)
 }

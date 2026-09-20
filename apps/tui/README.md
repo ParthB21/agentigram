@@ -32,16 +32,16 @@ Forked from [`holepunchto/hello-pear-qvac-tui`](https://github.com/holepunchto/h
 The TUI is a *view* on a room; the daemon owns the room. Start the daemon first:
 
 ```bash
-# once per machine — downloads ~0.8 GB of weights into QVAC's cache
-cd apps/tui && npm install && npm run warm
+# once per clone — installs both dependency trees, warms QVAC, and links `agg`
+npm run setup
 
 # then, from the repo you are coordinating
-pnpm agentigram create --root . --session backend --host claude   # or join '<invite>'
-pnpm agentigram tui --root .
+agg create backend   # or: agg join '<invite>' payments
+agg start
 ```
 
-`agentigram tui` resolves the daemon socket, checks the daemon is up, and launches this app on the
-Bare binary that `npm install` put in `node_modules`. To run it directly:
+`agg start` (also available as `agg tui`) resolves the daemon socket, checks the daemon is up, and
+launches this app on the Bare binary that `npm install` put in `node_modules`. To run it directly:
 
 ```bash
 npm start -- --socket "$AGENTIGRAM_SOCKET"

@@ -3,15 +3,23 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "bin": {
+    "agg": "bin/agg.mjs"
+  },
   "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "bootstrap": "pnpm install && npm --prefix apps/tui ci",
+    "dev": "pnpm --parallel --filter @agentigram/simulator --filter @agentigram/web dev",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && npm --prefix apps/tui test",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck",
-    "lint": "biome check .",
+    "lint": "biome lint .",
+    "model:warm": "npm --prefix apps/tui run warm",
     "sim": "pnpm --filter @agentigram/simulator start",
     "agentigram": "pnpm --filter @agentigram/daemon agentigram"
   },

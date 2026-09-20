@@ -37,6 +37,7 @@
     "electron": "38.8.6"
   },
   "bin": {
-    "agentigram": "./bin/agentigram.mjs"
+    "agentigram": "./bin/agentigram.mjs",
+    "agg": "./bin/agentigram.mjs"
   }
 }

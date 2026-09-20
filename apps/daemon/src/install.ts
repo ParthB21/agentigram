@@ -266,7 +266,7 @@ function installGitHook(root: string): void {
   }
   const script = [
     '#!/bin/sh',
-    '# Managed by Agentigram. Restored exactly by `agentigram leave`.',
+    '# Managed by Agentigram. Restored exactly by `agg leave`.',
     `[ -x "${original}" ] && "${original}" "$@"`,
     'exit 0',
     '',

@@ -8,6 +8,7 @@ describe('agentigram CLI', () => {
     const help = buildProgram().helpInformation();
     for (const cmd of [
       'create',
+      'setup',
       'demo',
       'dev-connect',
       'join',
@@ -16,6 +17,7 @@ describe('agentigram CLI', () => {
       'hook',
       'mcp',
       'status',
+      'tui',
       'ui',
     ]) {
       expect(help).toContain(cmd);
@@ -45,6 +47,19 @@ describe('agentigram CLI', () => {
     expect(create?.getOptionValue('root')).toBe(expected);
     expect(ui?.getOptionValue('root')).toBe(expected);
     expect(resolveRepositoryRoot('.', '/tmp/agentigram-worktree')).toBe(expected);
+  });
+
+  it('accepts concise positional session names and exposes start as a TUI alias', () => {
+    const create = buildProgram().commands.find((candidate) => candidate.name() === 'create');
+    const join = buildProgram().commands.find((candidate) => candidate.name() === 'join');
+    const tui = buildProgram().commands.find((candidate) => candidate.name() === 'tui');
+
+    expect(create?.registeredArguments.map((argument) => argument.name())).toEqual(['session']);
+    expect(join?.registeredArguments.map((argument) => argument.name())).toEqual([
+      'invite',
+      'session',
+    ]);
+    expect(tui?.aliases()).toContain('start');
   });
 
   it('summarises events on one line', () => {

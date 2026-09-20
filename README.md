@@ -43,39 +43,54 @@ See [`apps/tui/README.md`](apps/tui/README.md).
 
 ## Quick start
 
-Needs Node 22 (`.nvmrc`). If `pnpm` is not installed, use the pinned version through `npx`.
-
-**Two installs, and both are required.** `pnpm` at the root wires the workspace packages;
-`npm` inside `apps/tui` installs the Bare/Pear app. Never run `npm install` at the root — it
-resolves the root devDependencies, links no workspace package, and leaves the daemon failing with
-`Cannot find package '@agentigram/p2p'` while looking like it worked.
+Install Node 22 or newer (`.nvmrc` pins 22), then run one setup command from the repository root:
 
 ```bash
-npx pnpm@10.34.5 install
-npx pnpm@10.34.5 typecheck
-npx pnpm@10.34.5 test
+npm run setup
+```
 
-# The Pear app installs with npm, not pnpm (bare-pack needs a real node_modules tree).
-# `warm` downloads ~0.74 GB of model weights once per machine — do this before the demo.
-cd apps/tui && npm install && npm run warm && npm test && cd ../..
+Setup installs the pnpm workspace and Bare/Pear dependencies, downloads the local negotiation model,
+and globally links the short `agg` command. To defer the roughly 0.74 GB model download, use
+`npm run setup -- --skip-model`. Running an npm *script* at the root is safe; do not run
+`npm install` there because it does not link the workspace packages.
+
+The normal P2P workflow is then:
+
+```bash
+agg create backend                    # authority laptop; prints an invite
+agg join '<invite>' payments          # each additional laptop
+agg start                             # launch the terminal UI (`agg tui` also works)
+agg status                            # inspect the room/daemon
+agg leave                             # stop and restore local host configuration
+```
+
+Agentigram detects Codex, Claude Code, and Gemini from their environment. If you launch it from a
+plain terminal or have several hosts installed, select one explicitly, for example
+`agg create backend --host codex`. The current directory is the repository by default, so `--root .`
+is no longer needed. Session names are positional; the older `--session backend` form still works.
+
+After a checkout update, `agg setup` repairs dependencies and warms the model again. The original
+long-form scripts remain available for CI and troubleshooting. Run all checks with:
+
+```bash
+npx pnpm@10.34.5 check
+```
+
+For a browser-dashboard development session instead of the P2P terminal product:
+
+```bash
+npx pnpm@10.34.5 dev            # simulator + localhost dashboard; Ctrl+C stops both
+```
+
+Other useful commands:
+
+```bash
 
 # One-laptop P2P smoke test: 4 peers, a lease denial and a tier-1 collision
-npx pnpm@10.34.5 agentigram demo --scenario user-id-uuid --peers 4
-
-# Authority laptop (prints an agentigram:// invite)
-npx pnpm@10.34.5 agentigram create --root . --session backend --host claude
-
-# Second laptop, in a clone of the same Git repository
-npx pnpm@10.34.5 agentigram join '<invite>' --root . --session payments --host codex
-
-# Third laptop, using Gemini CLI (installs project hooks + Agentigram MCP automatically)
-npx pnpm@10.34.5 agentigram join '<invite>' --root . --session frontend --host gemini --engineer alex
-
-# The room view, with on-device negotiation (run this on every laptop)
-npx pnpm@10.34.5 agentigram tui --root .
+agg demo --scenario user-id-uuid --peers 4
 
 # Local transparent macOS window (the older Electron shell)
-npx pnpm@10.34.5 agentigram ui --root .
+agg ui
 ```
 
 Every laptop must be a clone of the same Git repository — the invite carries a fingerprint derived

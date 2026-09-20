@@ -2,21 +2,22 @@
 
 **Owner:** Part 2
 
-`agentigram` CLI + local daemon. It hosts or joins an encrypted P2P room, installs Claude Code or
+`agg` CLI + local daemon. It hosts or joins an encrypted P2P room, installs Claude Code or
 Codex hooks and a private MCP server, watches the worktree, enforces leases before edits, injects
 labelled peer context, and restores every modified configuration file on `leave`.
 
 ## Commands
 
 ```bash
-pnpm agentigram demo --peers 4
-pnpm agentigram create --root . --session backend --host claude
-pnpm agentigram join '<invite>' --root . --session payments --host codex
-pnpm agentigram status
-pnpm agentigram daemon --root /path/to/repo
-pnpm agentigram leave
-pnpm agentigram ui --root .
+npm run setup                       # once per clone; installs and links `agg`
+agg create backend                  # add --host when it cannot be detected
+agg join '<invite>' payments
+agg start                           # Bare/Pear TUI; `agg tui` is equivalent
+agg status
+agg leave
 ```
+
+The previous `pnpm agentigram ...`, `--root`, and `--session` forms remain supported.
 
 ## Verified external interfaces
 

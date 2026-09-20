@@ -5,19 +5,16 @@ negotiation, contract ledger, model statistics, prediction league and presenter 
 
 ## Run locally
 
-From the repository root, install the pinned workspace toolchain once:
+From the repository root, install everything once:
 
 ```bash
-corepack enable
-corepack prepare pnpm@10.34.5 --activate
-pnpm install
+npx pnpm@10.34.5 run bootstrap
 ```
 
-Then start the simulator and dashboard in separate terminals:
+Then start the simulator and dashboard together:
 
 ```bash
-pnpm sim --scenario user-id-uuid --speed 4
-pnpm --filter @agentigram/web dev
+npx pnpm@10.34.5 dev
 ```
 
 Open <http://localhost:3000/team/hackathon>. The simulator uses
@@ -38,8 +35,9 @@ events, copy `.env.example` to `.env.local` and set `AI_GATEWAY_API_KEY`; `PERSO
 
 ## Verify
 
+From the repository root, one command runs workspace lint and typechecks plus all workspace and TUI
+unit tests:
+
 ```bash
-pnpm --filter @agentigram/web test
-pnpm --filter @agentigram/web typecheck
-pnpm --filter @agentigram/web build
+npx pnpm@10.34.5 check
 ```

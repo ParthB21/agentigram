@@ -9,6 +9,7 @@
       "!openagents-develop",
       "!apps/tui",
       "!**/.next",
+      "!**/.next-stale-*",
       "!**/.wrangler",
       "!**/fixtures",
       "!**/dist",

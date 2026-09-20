@@ -1,3 +1,4 @@
+// biome-ignore lint/suspicious/noRedundantUseStrict: loaded as a classic browser script.
 'use strict';
 
 // The control window.
@@ -24,7 +25,7 @@ const el = {
 };
 
 let feed = [];
-let seen = new Set();
+const seen = new Set();
 
 function text(tag, className, value) {
   const node = document.createElement(tag);
