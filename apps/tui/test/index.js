@@ -434,6 +434,26 @@ test('the room feed records events and never grows without bound', async (t) => 
   t.ok(screen(app).includes('read 499'), 'and shows the newest line')
 })
 
+test('the room feed shows agent actions without tags, sequence numbers, or heartbeats', async (t) => {
+  const app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    {
+      type: 'room.event',
+      frame: { seq: 78, eventType: 'FILE_READ', text: '#78 vibecode FILE_READ spec.md' }
+    },
+    {
+      type: 'room.event',
+      frame: { seq: 80, eventType: 'HEARTBEAT', text: '#80 backend HEARTBEAT' }
+    }
+  ])
+  const view = screen(app)
+  t.is(app.feed.length, 1, 'heartbeat is not retained in the feed')
+  t.ok(view.includes('vibecode FILE_READ spec.md'), 'agent and action remain')
+  t.absent(view.includes('FILE·REA'), 'abbreviated event tag is removed')
+  t.absent(view.includes('#78'), 'sequence number is removed')
+  t.absent(view.includes('HEARTBEAT'), 'heartbeat is hidden')
+})
+
 test('the view never exceeds the terminal height', async (t) => {
   for (const height of [12, 24, 30, 60]) {
     const app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [

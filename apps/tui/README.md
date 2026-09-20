@@ -14,10 +14,10 @@ Forked from [`holepunchto/hello-pear-qvac-tui`](https://github.com/holepunchto/h
 │ ● backend   claude-code  Change User.id from number to a UUID string  🔒1    │
 │ ● payments  codex        idle                                                │
 │ ─────────────────────────────────────────────────────────────────────────── │
-│ SESSION·STA  #1 backend SESSION_STARTED                                      │
-│ FILE·REA     #3 payments FILE_READ src/types/user.ts                         │
-│ INTENT       #4 backend INTENT Change User.id from number to a UUID string   │
-│ COLLISION    #5 COLLISION PREDICTED src/types/user.ts#User.id:property       │
+│ backend SESSION_STARTED                                                      │
+│ payments FILE_READ src/types/user.ts                                         │
+│ backend INTENT Change User.id from number to a UUID string                   │
+│ backend COLLISION PREDICTED src/types/user.ts#User.id:property               │
 │ ─────────────────────────────────────────────────────────────────────────── │
 │ PREDICTED  backend ↔ payments  User.id                                       │
 │   User.id changes from a number to a UUID string, so payments has to adapt.  │

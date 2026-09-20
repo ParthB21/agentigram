@@ -149,6 +149,7 @@ class App {
         return this._intake()
 
       case 'room.event':
+        if (msg.frame.eventType === 'HEARTBEAT') return [this, null]
         this.feed.push(msg.frame)
         if (this.feed.length > MAX_FEED) this.feed = this.feed.slice(-MAX_FEED)
         this._layout()
@@ -565,8 +566,7 @@ class App {
   _feedLines() {
     const width = Math.max(MIN_WIDTH, this.width)
     return this.feed.map((frame) => {
-      const tag = frame.eventType === 'NOTE' ? '·' : shortType(frame.eventType)
-      const line = `${tag} ${frame.text}`
+      const line = frame.eventType === 'NOTE' ? `· ${frame.text}` : eventText(frame.text)
       return line.length > width ? `${line.slice(0, width - 1)}…` : line
     })
   }
@@ -755,12 +755,8 @@ class App {
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
-// Event types are long and the room pane is narrow; the first two segments
-// carry the meaning (LEASE_DENIED -> LEASE·DEN).
-function shortType(type) {
-  if (!type) return '·'
-  const parts = String(type).split('_')
-  return parts.length === 1 ? parts[0].slice(0, 8) : `${parts[0]}·${parts[1].slice(0, 3)}`
+function eventText(text) {
+  return String(text || '').replace(/^#\d+\s+/, '')
 }
 
 function rule(width) {
