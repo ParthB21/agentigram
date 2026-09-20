@@ -36,6 +36,7 @@ import { autonomousDenial } from './autonomous-guard.js';
 import { CursorStore } from './cursor-store.js';
 import { isFreshEvent, shouldRouteToInbox, shouldWake, WakeInbox } from './inbox.js';
 import type { InstallState } from './install.js';
+import { isHostPresenceNoise } from './host-presence.js';
 import { createIpcServer, type IpcFrame, type IpcRequest, type IpcResponse } from './ipc.js';
 import { freezeDenial } from './orchestrator/freeze.js';
 import { OllamaClient } from './orchestrator/ollama.js';
@@ -505,6 +506,8 @@ export class LaptopDaemon {
     // what was dropping reads and leaving every read set empty. The daemon
     // outlives the hook process, so the work still completes.
     for (const event of events) {
+      const known = this.roomState.sessions[sessionId];
+      if (isHostPresenceNoise(event, known)) continue;
       const guarded = this.attachFencingToken(event);
       if (guarded.payload.type === 'FILE_WRITE') {
         this.recordAgentWrite(guarded.payload.path);
