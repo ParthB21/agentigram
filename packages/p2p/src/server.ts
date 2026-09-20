@@ -15,13 +15,14 @@ export type P2PRoomServerOptions = {
   repositoryFingerprint: string;
   storage: string;
   capability?: string;
+  seed?: Uint8Array;
   handle: AuthorityHandler;
   onDisconnect?(peer: AuthorityPeer): void | Promise<void>;
 };
 
 export class P2PRoomServer {
   private readonly store: Corestore;
-  private readonly swarm = new Hyperswarm();
+  private readonly swarm: Hyperswarm;
   private readonly capability: string;
   private readonly peers = new Map<string, PeerChannel>();
   private readonly eventCore;
@@ -29,6 +30,7 @@ export class P2PRoomServer {
   private stopping = false;
 
   constructor(private readonly options: P2PRoomServerOptions) {
+    this.swarm = new Hyperswarm(options.seed ? { seed: options.seed } : undefined);
     this.store = new Corestore(options.storage);
     this.capability = options.capability ?? createCapability();
     this.eventCore = this.store.get<string>({
@@ -69,7 +71,7 @@ export class P2PRoomServer {
     return this.inviteValue;
   }
 
-/**
+  /**
    * The newest blocks of the replicated log, read through the process that
    * already holds the Corestore lock.
    */
@@ -110,14 +112,28 @@ export class P2PRoomServer {
     this.store.replicate(socket);
     const handshake = JSON.stringify({ capability: this.capability, peerId: 'authority' });
     const peer: AuthorityPeer = { id: peerId };
-    const channel = openControlChannel(
+    let channel: ControlChannel;
+    channel = openControlChannel(
       socket,
       handshake,
       (value, remoteHandshake) => void this.receive(value, remoteHandshake, peerId),
       () => {
-        const disconnected = this.peers.get(peerId)?.peer;
+        const connected = this.peers.get(peerId);
+        // A replacement connection can arrive before the old socket's close
+        // callback runs. Never let that stale callback delete the new peer.
+        if (connected?.channel !== channel) return;
+        const disconnected = connected.peer;
         this.peers.delete(peerId);
-        if (disconnected && !this.stopping) void this.options.onDisconnect?.(disconnected);
+        // A restarted daemon has a new Noise peer id. If its HELLO already
+        // registered the same session, this late close belongs to the old
+        // process and must not end the newly rejoined session.
+        const sessionReconnected =
+          disconnected.sessionId !== undefined &&
+          [...this.peers.values()].some(
+            ({ peer: candidate }) => candidate.sessionId === disconnected.sessionId,
+          );
+        if (disconnected && !sessionReconnected && !this.stopping)
+          void this.options.onDisconnect?.(disconnected);
       },
     );
     this.peers.set(peerId, { peer, channel });

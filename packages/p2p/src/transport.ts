@@ -127,18 +127,27 @@ export class P2PRoomTransport implements RoomTransport {
 
   private attach(socket: Duplex): void {
     this.store.replicate(socket);
-    this.channel = openControlChannel(
+    let channel: ControlChannel;
+    channel = openControlChannel(
       socket,
       JSON.stringify({ capability: this.invite.capability, peerId: this.options.clientId }),
       (value) => this.receive(value),
       () => {
+        // Ignore a late close from a socket that has already been replaced by
+        // a reconnect. Otherwise the healthy replacement is labelled offline.
+        if (this.channel !== channel) return;
+        this.channel = undefined;
         this.connected = false;
+        for (const pending of this.pending.values())
+          pending.reject(new AuthorityUnavailableError());
+        this.pending.clear();
         if (this.status !== 'closed') this.setStatus('read-only');
       },
     );
-    this.connected = true;
-    this.setStatus('connected');
-    this.channel.send(
+    this.channel = channel;
+    // HELLO must be the first application frame. In particular, do not emit
+    // `connected` before the authority knows which session this socket owns.
+    channel.send(
       JSON.stringify({
         type: 'HELLO',
         roomId: this.invite.roomId,
@@ -148,6 +157,8 @@ export class P2PRoomTransport implements RoomTransport {
         ...(this.options.sessionId ? { sessionId: this.options.sessionId } : {}),
       }),
     );
+    this.connected = true;
+    this.setStatus('connected');
   }
 
   private receive(value: string): void {

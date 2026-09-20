@@ -38,6 +38,22 @@ describe('reducer v0', () => {
     expect(s.teamSummary.activeSessions).toBe(0);
   });
 
+  it('restarts an ended session with the same id as active', () => {
+    seq = 0;
+    let s = reduce(emptyRoomState('r'), started('s1')).state;
+    s = reduce(s, ev({ type: 'SESSION_ENDED', sessionId: 's1' })).state;
+    const restarted = started('s1');
+    s = reduce(s, restarted).state;
+
+    expect(s.sessions.s1).toMatchObject({
+      status: 'active',
+      startedAt: restarted.ts,
+      lastHeartbeatAt: restarted.ts,
+    });
+    expect(s.sessions.s1?.endedAt).toBeUndefined();
+    expect(s.teamSummary).toMatchObject({ sessions: 1, activeSessions: 1 });
+  });
+
   it('updates presence from heartbeats using event time, and ignores unknown sessions', () => {
     seq = 0;
     let s = reduce(emptyRoomState('r'), started('s1')).state;

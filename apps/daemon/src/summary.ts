@@ -14,6 +14,10 @@ export function summarise(e: Event): string {
       return `#${e.seq} ${who} INTENT ${p.task}`;
     case 'MESSAGE':
       return `#${e.seq} ${who} MESSAGE -> ${p.to}`;
+    case 'SESSION_STARTED':
+      return `#${e.seq} ${who} joined the room`;
+    case 'SESSION_ENDED':
+      return `#${e.seq} ${who} left the room`;
     // Naming the tool is what tells you whether a host's reads are being
     // recognised: an unrecognised read shows up here as a bare TOOL_CALL.
     //

@@ -356,6 +356,25 @@ describe('presence', () => {
     expect(core.heartbeat('ghost')).toBeUndefined();
     expect(core.head).toBe(2);
   });
+
+  it('ends a disconnected session immediately and allows the same id to rejoin', () => {
+    const core = make();
+    core.submit(started(), SYSTEM);
+
+    const ended = core.endSession('s1', 'disconnect');
+    expect(ended).toHaveLength(1);
+    expect(ended[0]?.payload).toEqual({
+      type: 'SESSION_ENDED',
+      sessionId: 's1',
+      reason: 'disconnect',
+    });
+    expect(core.presence().s1).toBe('ended');
+    expect(core.endSession('s1', 'disconnect')).toEqual([]);
+
+    core.submit(started(), SYSTEM);
+    expect(core.presence().s1).toBe('live');
+    expect(core.stateFor('dashboard').sessions.s1?.status).toBe('active');
+  });
 });
 
 describe('conformance with the simulator', () => {

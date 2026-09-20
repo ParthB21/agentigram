@@ -195,6 +195,34 @@ export class RoomCore {
     );
   }
 
+  /**
+   * End a session from an authority-observed connection close.
+   *
+   * A process that crashes or loses its network cannot send SESSION_ENDED for
+   * itself. Recording the close here makes the roster update immediately
+   * instead of waiting for the heartbeat timeout. It is idempotent because a
+   * graceful `agg leave` may have already ended the same session.
+   */
+  endSession(sessionId: string, reason = 'disconnect'): Event[] {
+    const session = this.state.sessions[sessionId];
+    if (!session || session.status === 'ended') return [];
+    const outcome = this.submit(
+      {
+        id: crypto.randomUUID(),
+        roomId: this.roomId,
+        actor: {
+          engineerId: session.engineerId,
+          sessionId,
+          kind: 'agent',
+        },
+        source: 'system',
+        payload: { type: 'SESSION_ENDED', sessionId, reason },
+      },
+      { kind: 'system' },
+    );
+    return outcome.ok && !outcome.duplicate ? outcome.events : [];
+  }
+
   presence(): Record<string, Presence> {
     return presenceMap(this.state, this.now());
   }

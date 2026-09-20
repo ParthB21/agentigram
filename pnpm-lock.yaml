@@ -54,6 +54,9 @@ importers:
       '@agentigram/analysis':
         specifier: workspace:*
         version: link:../../packages/analysis
+      '@agentigram/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@agentigram/coordinator':
         specifier: workspace:*
         version: link:../coordinator

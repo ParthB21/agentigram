@@ -36,6 +36,7 @@ export class AuthorityTransport implements RoomTransport {
       repositoryFingerprint: state.repositoryFingerprint,
       storage: join(state.p2pStorage, 'hypercore'),
       capability: state.capability,
+      seed: state.authoritySeed ? Buffer.from(state.authoritySeed, 'hex') : undefined,
       handle: (message, peer) => this.handle(message, peer),
       onDisconnect: (peer) => this.disconnect(peer),
     });
@@ -153,7 +154,10 @@ export class AuthorityTransport implements RoomTransport {
 
   private async disconnect(peer: AuthorityPeer): Promise<void> {
     if (!peer.sessionId) return;
-    const events = this.core.expireSessionLeases(peer.sessionId, 'disconnect');
+    const events = [
+      ...this.core.expireSessionLeases(peer.sessionId, 'disconnect'),
+      ...this.core.endSession(peer.sessionId, 'disconnect'),
+    ];
     if (events.length > 0) await this.publish(events);
   }
 
@@ -181,7 +185,8 @@ export class AuthorityTransport implements RoomTransport {
       for (const candidate of detectCollisions(state, event)) {
         // One state snapshot covers the whole batch, so two events in it can
         // find the same overlap; the first wins.
-        if (!candidates.has(candidate.collisionId)) candidates.set(candidate.collisionId, candidate);
+        if (!candidates.has(candidate.collisionId))
+          candidates.set(candidate.collisionId, candidate);
       }
     }
     if (candidates.size === 0) return;

@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   chmodSync,
   existsSync,
@@ -44,6 +45,8 @@ export type InstallState = {
   p2pStorage: string;
   invite?: RoomInvite;
   capability?: string;
+  /** Stable Hyperswarm identity for an authority, encoded as 32-byte hex. */
+  authoritySeed?: string;
   engineerId: string;
   socketPath: string;
   pid?: number;
@@ -286,11 +289,7 @@ export function install(options: InstallOptions): InstallState {
       : options.host === 'codex'
         ? [join(root, CODEX_HOOKS_PATH), join(root, CODEX_CONFIG_PATH)]
         : [join(root, GEMINI_SETTINGS_PATH)]; // gemini-cli and antigravity share .gemini/settings.json
-  const trackedPaths = [
-    join(root, GIT_HOOK_PATH),
-    join(root, ORIGINAL_HOOK_PATH),
-    ...hostPaths,
-  ];
+  const trackedPaths = [join(root, GIT_HOOK_PATH), join(root, ORIGINAL_HOOK_PATH), ...hostPaths];
   const candidateDirectories = [...new Set(trackedPaths.map((path) => dirname(path)))];
   const state: InstallState = {
     version: 2,
@@ -303,6 +302,7 @@ export function install(options: InstallOptions): InstallState {
     p2pStorage: paths.p2pStorage,
     ...(options.invite ? { invite: options.invite } : {}),
     ...(options.capability ? { capability: options.capability } : {}),
+    ...(options.mode === 'authority' ? { authoritySeed: randomBytes(32).toString('hex') } : {}),
     engineerId: options.engineerId ?? userInfo().username,
     socketPath: paths.socket,
     claudeConfigPath,

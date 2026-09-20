@@ -759,8 +759,11 @@ class App {
 
   _footer() {
     const summary = this.state?.summary
+    const agents = this.state?.agents || []
+    const presence = this.state?.presence || {}
+    const live = agents.filter((agent) => (presence[agent.sessionId] || 'live') === 'live').length
     const counts = summary
-      ? `${summary.activeSessions}/${summary.sessions} active · ${summary.openCollisions} open · ${summary.activeLeases} leases`
+      ? `${live}/${agents.length} online · ${summary.openCollisions} open · ${summary.activeLeases} leases`
       : 'waiting for the daemon'
     const voice = this.speechLoading ? ` · voice ${Math.round(this.speechPercentage)}%` : ''
     return style()

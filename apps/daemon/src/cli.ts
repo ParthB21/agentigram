@@ -1,8 +1,8 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { accessSync, chmodSync, constants, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { basename, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCapability, decodeInvite } from '@agentigram/p2p';
 import { Command } from 'commander';
@@ -46,6 +46,13 @@ async function readStdin(): Promise<string> {
 function requiredState(root: string): InstallState {
   const state = readInstallState(root);
   if (!state) throw new Error(`Agentigram is not joined in ${root}`);
+  // Installs created before stable authority identities were introduced get a
+  // seed exactly once. Keeping it in the protected install state means daemon
+  // restarts no longer invalidate every outstanding room invite.
+  if (state.mode === 'authority' && !state.authoritySeed) {
+    state.authoritySeed = randomBytes(32).toString('hex');
+    writeInstallState(state);
+  }
   return state;
 }
 
@@ -158,37 +165,51 @@ function verifyRepository(root: string): void {
   }
 }
 
-function repositoryFingerprint(root: string): string {
-  const absolute = resolve(root);
-  let identity: string;
-  try {
-    identity = execFileSync('git', ['config', '--get', 'remote.origin.url'], {
-      cwd: absolute,
-      encoding: 'utf8',
-    }).trim();
-  } catch {
-    identity = '';
-  }
-  if (!identity) {
-    identity = `${basename(absolute)}:${execFileSync('git', ['rev-list', '--max-parents=0', 'HEAD'], { cwd: absolute, encoding: 'utf8' }).trim()}`;
-  }
-  return createHash('sha256')
-    .update(identity.replace(/\.git$/, '').toLowerCase())
-    .digest('hex');
+const REPOSITORY_FINGERPRINT_PREFIX = 'git-roots-v1:';
+
+/**
+ * A repository identity that survives host moves, renames, and different clone URLs.
+ * Sorting also makes histories with multiple roots deterministic.
+ */
+export function fingerprintRepositoryRoots(roots: readonly string[]): string {
+  const normalized = [...new Set(roots.map((root) => root.trim().toLowerCase()).filter(Boolean))]
+    .sort()
+    .join('\n');
+  if (!normalized) throw new Error('repository has no commits; create an initial commit first');
+  return `${REPOSITORY_FINGERPRINT_PREFIX}${createHash('sha256').update(normalized).digest('hex')}`;
+}
+
+export function repositoryFingerprint(root: string): string {
+  const roots = execFileSync('git', ['rev-list', '--max-parents=0', 'HEAD'], {
+    cwd: resolve(root),
+    encoding: 'utf8',
+  }).split(/\s+/);
+  return fingerprintRepositoryRoots(roots);
+}
+
+/**
+ * Invites created before git-roots-v1 used the origin URL, which changes when
+ * a repository is renamed or cloned through a different protocol. They cannot
+ * be compared reliably after a rename, so keep them joinable. New invites use
+ * the self-identifying prefix and are checked strictly against Git history.
+ */
+export function repositoryFingerprintMatches(local: string, invited: string): boolean {
+  return !invited.startsWith(REPOSITORY_FINGERPRINT_PREFIX) || local === invited;
 }
 
 /** Poll until the process is gone, or give up — a stuck daemon must not block `leave`. */
-async function waitForExit(pid: number, timeoutMs = 5_000): Promise<void> {
+async function waitForExit(pid: number, timeoutMs = 5_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       // Signal 0 tests for existence without delivering anything.
       process.kill(pid, 0);
     } catch {
-      return;
+      return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  return false;
 }
 
 function startDaemon(state: InstallState): void {
@@ -340,8 +361,8 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         verifyRepository(root);
         const invite = decodeInvite(inviteUri);
         const fingerprint = repositoryFingerprint(root);
-        if (fingerprint !== invite.repositoryFingerprint) {
-          throw new Error('this invite belongs to a different Git repository');
+        if (!repositoryFingerprintMatches(fingerprint, invite.repositoryFingerprint)) {
+          throw new Error('this invite belongs to a different Git history');
         }
         const selectedHost = host(options.host);
         const selectedSession = sessionName(session, options.session);
@@ -352,7 +373,9 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           mode: 'peer',
           host: selectedHost,
           sessionId: selectedSession,
-          repositoryFingerprint: fingerprint,
+          // The room keeps its authority-issued identity. For a legacy invite
+          // this is the old URL-based value; new invites equal `fingerprint`.
+          repositoryFingerprint: invite.repositoryFingerprint,
           invite,
           engineerId: options.engineer,
         });
@@ -377,16 +400,26 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .option('--root <path>', 'repository root', defaultRoot)
     .action(async (options: { root: string }) => {
       const state = requiredState(resolveRoot(options.root));
+      let stopped = false;
+      try {
+        const response = await requestIpc(state.socketPath, { type: 'shutdown' }, 1_000);
+        stopped = response.ok;
+      } catch {
+        // Fall back to the stored PID for old or crashed daemons.
+      }
       if (state.pid) {
-        try {
-          process.kill(state.pid, 'SIGTERM');
-        } catch {
-          // A stopped daemon does not prevent exact configuration restoration.
+        if (stopped) stopped = await waitForExit(state.pid);
+        if (!stopped) {
+          try {
+            process.kill(state.pid, 'SIGTERM');
+          } catch {
+            // A stopped daemon does not prevent exact configuration restoration.
+          }
+          // Corestore holds an exclusive lock on its storage, and removing that
+          // storage is part of leaving — so wait for the process to actually go
+          // rather than racing it and failing with EBUSY.
+          await waitForExit(state.pid);
         }
-        // Corestore holds an exclusive lock on its storage, and removing that
-        // storage is part of leaving — so wait for the process to actually go
-        // rather than racing it and failing with EBUSY.
-        await waitForExit(state.pid);
       }
       uninstall(state.root);
       console.log(`Left ${state.roomId}. Local configuration restored.`);
@@ -397,12 +430,16 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .description('Run the local daemon in the foreground.')
     .option('--root <path>', 'repository root', defaultRoot)
     .action(async (options: { root: string }) => {
-      const daemon = new LaptopDaemon(requiredState(resolveRoot(options.root)));
-      await daemon.start();
+      let daemon: LaptopDaemon;
+      let stopping = false;
       const stop = async () => {
+        if (stopping) return;
+        stopping = true;
         await daemon.stop();
         process.exit(0);
       };
+      daemon = new LaptopDaemon(requiredState(resolveRoot(options.root)), () => void stop());
+      await daemon.start();
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
     });
