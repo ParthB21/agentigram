@@ -140,6 +140,20 @@ describe('detectCollisions', () => {
     expect(detectCollisions(room(), read)).toEqual([]);
   });
 
+  it('collides with a symbol the peer only announced, for hosts with no working hooks', () => {
+    // payments has read nothing — all it could do was call the MCP tool.
+    const state = room({
+      payments: {
+        readFiles: [],
+        readSymbols: [],
+        intent: { task: 'Charge by user id', files: ['src/checkout.ts'], symbols: [USER_ID] },
+      },
+    });
+    const [collision] = detectCollisions(state, intent);
+    expect(collision?.tier).toBe('PREDICTED');
+    expect(collision?.symbols).toEqual([USER_ID]);
+  });
+
   it('leaves write-vs-write to the reducer, which already opens that collision', () => {
     // payments has written the file but never read it: `applyFileWrite` owns this.
     const state = room({ payments: { readFiles: [], readSymbols: [], writeFiles: [WRITTEN] } });

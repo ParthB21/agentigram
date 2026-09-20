@@ -119,6 +119,7 @@ export class LaptopDaemon {
       this.server.once('error', reject);
       this.server.listen(this.state.socketPath, resolve);
     });
+    await this.announceSession();
     this.heartbeat = setInterval(
       () => this.transport.heartbeat(this.state.sessionId),
       SESSION_HEARTBEAT_MS,
@@ -127,6 +128,46 @@ export class LaptopDaemon {
       { roomId: this.state.roomId, socket: this.state.socketPath, mode: this.state.mode },
       'daemon ready',
     );
+  }
+
+  /**
+   * Put this laptop in the room as soon as the daemon is up, rather than waiting
+   * for the host's SessionStart hook.
+   *
+   * A heartbeat only refreshes a session that already exists, so without this a
+   * host whose hooks are not firing — Codex before its project hooks are
+   * trusted, or any host in the degraded watcher + MCP mode — stays invisible
+   * to everyone else while looking healthy on its own machine. The hook, when
+   * it does arrive, carries the real model and branch and simply updates it.
+   */
+  private async announceSession(): Promise<void> {
+    if (this.roomState.sessions[this.state.sessionId]) return;
+    try {
+      await this.submit({
+        id: crypto.randomUUID(),
+        roomId: this.state.roomId,
+        actor: {
+          engineerId: this.state.engineerId,
+          sessionId: this.state.sessionId,
+          kind: 'agent',
+        },
+        source: 'hook',
+        payload: {
+          type: 'SESSION_STARTED',
+          sessionId: this.state.sessionId,
+          host: this.state.host,
+          model: 'unknown',
+          branch: branch(this.state.root),
+        },
+      });
+    } catch (error) {
+      // Not fatal: a peer whose authority is briefly unavailable still runs,
+      // and the next hook or restart re-announces.
+      this.log.warn(
+        { err: error instanceof Error ? error.message : String(error) },
+        'could not announce this session',
+      );
+    }
   }
 
   async stop(): Promise<void> {

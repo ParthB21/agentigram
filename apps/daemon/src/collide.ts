@@ -104,7 +104,14 @@ export function detectCollisions(state: RoomState, event: Event): CollisionCandi
   for (const session of Object.values(state.sessions)) {
     if (session.sessionId === writer || session.status === 'ended') continue;
 
-    const symbolHits = intersect(write.symbols, session.readSymbols ?? []);
+    // Symbols the other session cares about: ones it has read, and ones it has
+    // announced it intends to change. The second half is what makes this work
+    // for a host whose hooks are not firing — an agent that can only reach the
+    // MCP tools still declares an intent, and that is enough to be collided
+    // with. The reducer covers no symbol case at all, so there is nothing to
+    // double up with here.
+    const theirSymbols = [...(session.readSymbols ?? []), ...(session.intent?.symbols ?? [])];
+    const symbolHits = intersect(write.symbols, theirSymbols);
     // Reads only. Write-vs-write on the same path is already opened by the
     // reducer (`applyFileWrite`), and counting it here would open a second
     // collision for one overlap. The gap this fills is the asymmetric case the
