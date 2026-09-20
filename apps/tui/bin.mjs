@@ -97,9 +97,7 @@ room.on('state', (state) => {
   // agents whose laptop is not here to be their voice. It therefore speaks the
   // whole room; a peer speaks only its own agent, so a message is not read out
   // by every machine at once.
-  speech.setVoicedSessions(
-    state.mode === 'authority' ? (state.agents || []).map((agent) => agent.sessionId) : []
-  )
+  speech.setVoiceAll(state.mode === 'authority')
   if (speechFloor === null) speechFloor = state.lastSeq
   if (state.mode === 'authority' && !inferenceStarted) {
     inferenceStarted = true

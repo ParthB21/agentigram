@@ -1,6 +1,11 @@
-import type { Event } from '@agentigram/protocol';
+import { emptyRoomState, type Event, type RoomState } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
-import { agentContextText, speechMetadata, SYSTEM_SPEAKER } from './event-rendering.js';
+import {
+  agentContextText,
+  isRepeatedPresence,
+  speechMetadata,
+  SYSTEM_SPEAKER,
+} from './event-rendering.js';
 
 function event(payload: Event['payload']): Event {
   return {
@@ -13,6 +18,14 @@ function event(payload: Event['payload']): Event {
     payload,
   };
 }
+
+const joined = {
+  type: 'SESSION_STARTED',
+  sessionId: 'bob',
+  host: 'codex',
+  model: 'gpt',
+  branch: 'main',
+} as const;
 
 describe('event rendering boundaries', () => {
   it('keeps the exact redacted message body in agent context', () => {
@@ -42,6 +55,54 @@ describe('event rendering boundaries', () => {
     // it has to be the same string every laptop knows the speaker by.
     const spoken = speechMetadata(event({ type: 'ACCEPT', collisionId: 'c1' }));
     expect(spoken?.speaker).toBe('backend');
+  });
+
+  it('speaks an agent arriving and leaving, but not what it reads or runs', () => {
+    // An agent that has joined is one whose writes can now collide with yours.
+    // What it then does is telemetry, and narrating it would crowd out speech.
+    expect(speechMetadata(event(joined))).toMatchObject({
+      speaker: 'backend',
+      text: 'Bob joined the room.',
+      priority: 0,
+    });
+    expect(speechMetadata(event({ type: 'SESSION_ENDED', sessionId: 'bob' }))).toMatchObject({
+      text: 'Bob left the room.',
+    });
+    expect(speechMetadata(event({ type: 'FILE_READ', path: 'README.md' }))).toBeUndefined();
+    expect(
+      speechMetadata(event({ type: 'TOOL_CALL', tool: 'Bash', phase: 'post' })),
+    ).toBeUndefined();
+  });
+
+  it('announces one arrival once, however many events report it', () => {
+    const room = (status: 'active' | 'ended'): RoomState => ({
+      ...emptyRoomState('hackathon'),
+      sessions: {
+        bob: {
+          sessionId: 'bob',
+          engineerId: 'eng-bob',
+          host: 'codex',
+          model: 'gpt',
+          branch: 'main',
+          status,
+          readFiles: [],
+          readSymbols: [],
+          writeFiles: [],
+          startedAt: new Date().toISOString(),
+          lastHeartbeatAt: new Date().toISOString(),
+        },
+      },
+    });
+    const left = event({ type: 'SESSION_ENDED', sessionId: 'bob' });
+
+    expect(isRepeatedPresence(emptyRoomState('hackathon'), event(joined))).toBe(false);
+    expect(isRepeatedPresence(room('active'), event(joined))).toBe(true);
+    // Its own farewell, then the authority noticing the socket close: one departure.
+    expect(isRepeatedPresence(room('active'), left)).toBe(false);
+    expect(isRepeatedPresence(room('ended'), left)).toBe(true);
+    expect(isRepeatedPresence(room('active'), event({ type: 'FILE_READ', path: 'a.ts' }))).toBe(
+      false,
+    );
   });
 
   it('gives the room a speaker of its own when no session said it', () => {

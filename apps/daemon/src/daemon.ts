@@ -34,7 +34,7 @@ import pino from 'pino';
 import { AuthorityTransport } from './authority-transport.js';
 import { autonomousDenial } from './autonomous-guard.js';
 import { CursorStore } from './cursor-store.js';
-import { speechMetadata } from './event-rendering.js';
+import { isRepeatedPresence, speechMetadata } from './event-rendering.js';
 import { isFreshEvent, shouldRouteToInbox, shouldWake, WakeInbox } from './inbox.js';
 import type { InstallState } from './install.js';
 import { createIpcServer, type IpcFrame, type IpcRequest, type IpcResponse } from './ipc.js';
@@ -687,7 +687,10 @@ export class LaptopDaemon {
     const now = Date.now();
     for (const event of events.sort((a, b) => a.seq - b.seq)) {
       if (event.seq <= this.roomState.lastSeq) continue;
-      this.roomState = reduce(this.roomState, event).state;
+      // Presence is judged against the room as it was a moment ago: whether an arrival is news
+      // is exactly the question of what this event changed.
+      const before = this.roomState;
+      this.roomState = reduce(before, event).state;
       this.cursor.set(event.seq);
       this.recordActivity(event);
       // Collisions are opened by the authority as it sequences events
@@ -695,8 +698,8 @@ export class LaptopDaemon {
       // ordinary replicated events like any other.
       //
       // The room view sees everything this laptop sees, including dashboard-only types.
-      const fresh = isFreshEvent(event, now);
-      const speech = fresh ? speechMetadata(event) : undefined;
+      const speakable = isFreshEvent(event, now) && !isRepeatedPresence(before, event);
+      const speech = speakable ? speechMetadata(event) : undefined;
       this.broadcast({
         t: 'event',
         seq: event.seq,

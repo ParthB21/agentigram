@@ -166,7 +166,8 @@ plays a one-line hardware/audio smoke test before a demo.
 - Output rate is pinned to 44100 Hz in the model config. PCM crosses the worker boundary as base64-encoded signed 16-bit audio, is wrapped as a temporary WAV, and is played with `/usr/bin/afplay`.
 - Voices come from hashing the session id into a Parler speaker description, so they are stable across restarts. A line the orchestrator publishes as the room rather than as either agent is attributed to `agentigram` and is never muted by default — it matches no agent row, so there would be no button to turn it back on.
 - Settings persist to `<storage>/speech.json`: volume 0.8, plus every explicit mute or unmute.
-- Only fresh events are considered. Exact `MESSAGE` text and deterministic coordination milestones are eligible; heartbeats, file reads/writes, tool calls, logs, and persona filler are silent.
+- Only fresh events are considered. Exact `MESSAGE` text, deterministic coordination milestones, and an agent arriving or leaving are eligible; heartbeats, file reads/writes, tool calls, logs, and persona filler are silent. An agent that only reads files and runs commands says nothing, by design — an arrival is news because that agent's writes can now collide with yours, and what it does next is telemetry.
+- One arrival is one announcement: a session that ends twice (its own farewell, then the authority noticing the socket close) or re-announces itself on a reconnect is spoken once, even though the feed shows both.
 - The model starts loading at launch rather than on the first line, so a debate is not half over before the first word plays. `agg speech-test` downloads it ahead of a demo.
 - Tests (`npm test`) use fake engine/player/fs. Run `agg speech-test --text "hello"` for the real model and audio path.
 
@@ -179,7 +180,10 @@ playback is seconds later, and by then they are already talking.
 
 Who a laptop speaks for depends on its room role. A peer voices only its own
 coding agent, so one room message is not spoken by every machine. The authority
-voices the whole roster, because it is where the orchestrator runs and the
+voices the whole room, because it is where the orchestrator runs and the
 orchestrator negotiates on behalf of agents whose laptop is not in the room —
 without this, the debate it conducts would be inaudible on the one machine
-running it. Either way, `[s]` or a click on the button overrides it per agent.
+running it. It is a flag rather than a list of known sessions because an agent's
+first event is its own arrival, which reaches the view before the room state
+that would list it. Either way, `[s]` or a click on the button overrides it per
+agent.

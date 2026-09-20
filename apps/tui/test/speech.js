@@ -79,13 +79,13 @@ function fakePlayer() {
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
 
-function setup({ maxQueue, local = 'codex', voiced } = {}) {
+function setup({ maxQueue, local = 'codex', voiceAll = false } = {}) {
   const engine = fakeEngine()
   const player = fakePlayer()
   const settings = new Settings(null)
   const speech = new Speech({ engine, player, settings, maxQueue })
   speech.setLocalSession(local)
-  if (voiced) speech.setVoicedSessions(voiced)
+  speech.setVoiceAll(voiceAll)
   const events = []
   for (const name of ['queued', 'started', 'finished', 'muted', 'error', 'ready', 'progress']) {
     speech.on(name, (e) => events.push([name, e]))
@@ -194,8 +194,11 @@ test('speech: the authority voices the whole room, a peer only its own agent', a
   // The orchestrator runs on the authority and negotiates on behalf of agents
   // whose laptop is not here to speak for them, so the machine conducting the
   // debate has to be able to hear both sides of it.
-  const authority = setup({ local: 'backend', voiced: ['backend', 'payments'] })
+  const authority = setup({ local: 'backend', voiceAll: true })
   t.is(authority.speech.enqueue({ seq: 1, speaker: 'payments', text: 'I have read User.id' }), true)
+  // An agent's first event is its own arrival, which lands before the room state
+  // that would list it. A roster would silence every agent exactly as it joined.
+  t.is(authority.speech.enqueue({ seq: 2, speaker: 'bob', text: 'Bob joined the room.' }), true)
   await tick()
   t.is(authority.engine.spoken[0].text, 'I have read User.id')
 
@@ -218,7 +221,7 @@ test('speech: the room speaks for itself and cannot be silenced by default', asy
 })
 
 test('speech: the queue snapshot names a speaker before there is any audio', async (t) => {
-  const { engine, player, speech, queue } = setup({ local: 'backend', voiced: ['payments'] })
+  const { engine, player, speech, queue } = setup({ local: 'backend', voiceAll: true })
   speech.enqueue({ seq: 1, speaker: 'payments', text: 'first' })
   speech.enqueue({ seq: 2, speaker: 'backend', text: 'second' })
   await tick()

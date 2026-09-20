@@ -2,7 +2,7 @@
 //
 //   const speech = new Speech({ engine, player, settings })
 //   speech.setLocalSession('backend')
-//   speech.setVoicedSessions(['backend', 'payments'])  // see below
+//   speech.setVoiceAll(true)                           // see below
 //   speech.enqueue({ seq, speaker, text, priority })   // priority 0-3, 3 = urgent
 //   speech.toggle(sessionId) · speech.mute(sessionId, true) · speech.cancel()
 //   await speech.warm() · await speech.close()
@@ -16,8 +16,12 @@
 // the room role. A plain peer voices only its own coding agent, so one room
 // message is not spoken by every machine. The authority also runs the
 // orchestrator, which negotiates on behalf of agents whose laptop is not here
-// to speak for them — so it is given the whole roster, and without that the
-// debate it is conducting would be inaudible on the one machine running it.
+// to speak for them — so it speaks for the room, and without that the debate it
+// is conducting would be inaudible on the one machine running it.
+//
+// It is a flag rather than a roster because an agent's first event is its own
+// arrival, which reaches this process before the room state that would list it:
+// a set of known sessions would silence every agent exactly as it joined.
 const EventEmitter = require('bare-events')
 const { voiceFor } = require('./voices.js')
 
@@ -39,7 +43,7 @@ class Speech extends EventEmitter {
     this.settings = settings
     this.maxQueue = maxQueue
     this.localSession = null
-    this.voiced = new Set()
+    this.voiceAll = false
     this.closed = false
 
     this._queue = []
@@ -57,9 +61,9 @@ class Speech extends EventEmitter {
     this.localSession = sessionId
   }
 
-  /** Every session this laptop is responsible for voicing, beyond its own agent. */
-  setVoicedSessions(sessionIds) {
-    this.voiced = new Set(sessionIds || [])
+  /** Whether this laptop voices the whole room rather than only its own agent. */
+  setVoiceAll(enabled) {
+    this.voiceAll = !!enabled
   }
 
   isMuted(sessionId) {
@@ -68,9 +72,7 @@ class Speech extends EventEmitter {
 
   /** Whether a speaker is heard here absent an explicit choice from the person watching. */
   speaksByDefault(sessionId) {
-    return (
-      sessionId === this.localSession || sessionId === SYSTEM_SPEAKER || this.voiced.has(sessionId)
-    )
+    return sessionId === this.localSession || sessionId === SYSTEM_SPEAKER || this.voiceAll
   }
 
   /**
