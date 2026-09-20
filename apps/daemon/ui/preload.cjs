@@ -3,6 +3,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('agentigram', {
+  platform: process.platform,
   getStatus: () => ipcRenderer.invoke('agentigram:get-status'),
   subscribeToEvents: (callback) => {
     const listener = (_event, status) => callback(status);

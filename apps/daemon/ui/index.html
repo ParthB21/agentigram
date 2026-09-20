@@ -4,46 +4,214 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src 'self'; script-src 'self'; font-src 'self'"
+      content="default-src 'none'; style-src 'self'; script-src 'self'; font-src 'self'; img-src 'self' data:; media-src 'self' blob: data:"
     />
-    <title>Agentigram</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agentigram Room</title>
     <link rel="icon" href="favicon.svg" />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="meeting.css" />
+    <link rel="stylesheet" href="motion.css" />
   </head>
   <body>
+    <svg class="symbol-library" aria-hidden="true">
+      <symbol id="icon-wave" viewBox="0 0 24 24">
+        <path d="M4 14v-4M8 17V7m4 13V4m4 13V7m4 7v-4" />
+      </symbol>
+      <symbol id="icon-volume" viewBox="0 0 24 24">
+        <path d="M11 5 6.5 9H3v6h3.5l4.5 4V5Zm4.5 4.5a4 4 0 0 1 0 5m2.5-8a8 8 0 0 1 0 11" />
+      </symbol>
+      <symbol id="icon-volume-off" viewBox="0 0 24 24">
+        <path d="M11 5 6.5 9H3v6h3.5l4.5 4V5Zm5 5 5 5m0-5-5 5" />
+      </symbol>
+      <symbol id="icon-caption" viewBox="0 0 24 24">
+        <rect x="3" y="5" width="18" height="14" rx="3" />
+        <path d="M10 10a2.5 2.5 0 1 0 0 4m7-4a2.5 2.5 0 1 0 0 4" />
+      </symbol>
+      <symbol id="icon-layout" viewBox="0 0 24 24">
+        <rect x="3" y="3" width="8" height="8" rx="2" />
+        <rect x="13" y="3" width="8" height="8" rx="2" />
+        <rect x="3" y="13" width="8" height="8" rx="2" />
+        <rect x="13" y="13" width="8" height="8" rx="2" />
+      </symbol>
+      <symbol id="icon-present" viewBox="0 0 24 24">
+        <rect x="3" y="4" width="18" height="13" rx="3" />
+        <path d="m9 21 3-4 3 4" />
+      </symbol>
+      <symbol id="icon-more" viewBox="0 0 24 24">
+        <circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" />
+      </symbol>
+      <symbol id="icon-lock" viewBox="0 0 24 24">
+        <rect x="5" y="10" width="14" height="10" rx="3" />
+        <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+      </symbol>
+      <symbol id="icon-alert" viewBox="0 0 24 24">
+        <path d="M10.3 4.2 2.7 17.5A1.7 1.7 0 0 0 4.2 20h15.6a1.7 1.7 0 0 0 1.5-2.5L13.7 4.2a2 2 0 0 0-3.4 0Z" />
+        <path d="M12 9v4m0 3h.01" />
+      </symbol>
+      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7" /></symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
+    </svg>
+
+    <div class="ambient" aria-hidden="true">
+      <span class="ambient-orb orb-one"></span>
+      <span class="ambient-orb orb-two"></span>
+      <span class="ambient-orb orb-three"></span>
+      <span class="ambient-noise"></span>
+    </div>
+
     <header class="titlebar">
-      <div class="brand">
-        <span class="mark"></span>
-        <h1 id="room">agentigram</h1>
-        <span class="chip" id="mode"></span>
+      <div class="window-drag brand">
+        <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <div class="brand-copy">
+          <strong>Agentigram</strong>
+          <span id="roomName">Agent room</span>
+        </div>
       </div>
-      <div class="status">
-        <span class="chip" id="link">connecting</span>
-        <span class="chip" id="counts"></span>
+      <div class="window-drag meeting-title" aria-live="polite">
+        <span id="roomId">Connecting to room</span>
+        <span class="role-pill" id="mode" hidden></span>
+      </div>
+      <div class="title-status">
+        <span class="connection-pill" id="link"><i></i><span>Connecting</span></span>
+        <span class="meeting-clock" id="meetingClock">00:00</span>
       </div>
     </header>
 
-    <main>
-      <section class="panel agents">
-        <h2>Agents</h2>
-        <ul id="agents" class="agents-list">
-          <li class="empty">waiting for the room…</li>
-        </ul>
-      </section>
-
-      <section class="panel negotiation">
-        <h2>Negotiation</h2>
-        <div id="collision" class="collision empty-state">
-          <p class="quiet">No open collisions. Everyone is clear.</p>
+    <main class="workspace">
+      <section class="meeting-surface" aria-labelledby="stageTitle">
+        <div class="stage-heading">
+          <div>
+            <span class="eyebrow">Live workspace</span>
+            <h1 id="stageTitle">Agents in session</h1>
+          </div>
+          <div class="stage-summary" id="counts">Waiting for the room...</div>
         </div>
+
+        <div class="agent-stage" id="agentStage" aria-live="polite">
+          <div class="empty-room" id="emptyRoom">
+            <span class="empty-signal"><i></i><i></i><i></i></span>
+            <strong>The room is getting ready</strong>
+            <span>Agents will appear here as they join.</span>
+          </div>
+        </div>
+
+        <div class="live-caption" id="liveCaption" hidden aria-live="polite">
+          <span class="caption-speaker" id="captionSpeaker"></span>
+          <span id="captionText"></span>
+        </div>
+
+        <section class="collision-banner" id="collisionBanner" hidden aria-live="assertive">
+          <div class="collision-icon"><svg aria-hidden="true"><use href="#icon-alert"></use></svg></div>
+          <div class="collision-copy">
+            <span class="collision-kicker" id="collisionTier">Collision detected</span>
+            <strong id="collisionHeadline"></strong>
+            <span id="collisionSummary"></span>
+          </div>
+          <button class="glass-button compact" id="reviewCollision" type="button">
+            Review <svg aria-hidden="true"><use href="#icon-chevron"></use></svg>
+          </button>
+        </section>
       </section>
 
-      <section class="panel feed">
-        <h2>Room</h2>
-        <ul id="feed" class="feed-list"></ul>
-      </section>
+      <aside class="inspector" id="inspector" aria-label="Meeting details">
+        <div class="inspector-heading">
+          <div>
+            <span class="eyebrow">Room context</span>
+            <h2>Conversation</h2>
+          </div>
+          <button class="icon-button mobile-close" id="closeInspector" type="button" aria-label="Close details">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+
+        <div class="segmented-control" role="tablist" aria-label="Room details">
+          <button id="conversationTab" role="tab" aria-selected="true" aria-controls="conversationPanel" type="button">Dialogue</button>
+          <button id="activityTab" role="tab" aria-selected="false" aria-controls="activityPanel" type="button">Activity</button>
+          <span class="segment-indicator" aria-hidden="true"></span>
+        </div>
+
+        <section class="inspector-panel dialogue-panel" id="conversationPanel" role="tabpanel" aria-labelledby="conversationTab">
+          <div class="empty-conversation" id="emptyConversation">
+            <span class="conversation-orb"><i></i><i></i><i></i></span>
+            <strong>Quiet for now</strong>
+            <span>Agent dialogue and spoken updates will collect here.</span>
+          </div>
+          <ol class="dialogue-list" id="dialogue"></ol>
+        </section>
+
+        <section class="inspector-panel activity-panel" id="activityPanel" role="tabpanel" aria-labelledby="activityTab" hidden>
+          <ol class="activity-list" id="feed"></ol>
+        </section>
+
+        <section class="negotiation-card" id="collisionPanel" hidden>
+          <div class="negotiation-title">
+            <div>
+              <span class="eyebrow">Active negotiation</span>
+              <h3 id="negotiationAgents">Agents negotiating</h3>
+            </div>
+            <span class="severity-pill" id="negotiationTier"></span>
+          </div>
+          <p id="negotiationDetail"></p>
+          <div class="contract-diff" id="contractDiff" hidden>
+            <span class="contract-label">Proposed contract</span>
+            <code id="contractSymbol"></code>
+            <div><del id="contractBefore"></del><span class="diff-arrow">&rarr;</span><ins id="contractAfter"></ins></div>
+            <p id="contractConstraint"></p>
+          </div>
+          <div class="negotiation-actions" id="negotiationActions">
+            <button class="glass-button positive" id="acceptCollision" type="button">
+              <svg aria-hidden="true"><use href="#icon-check"></use></svg> Accept resolution
+            </button>
+            <button class="glass-button" id="escalateCollision" type="button">Escalate</button>
+          </div>
+          <p class="action-note" id="actionNote"></p>
+        </section>
+      </aside>
     </main>
 
-    <script src="renderer.js"></script>
+    <nav class="control-dock" aria-label="Meeting controls">
+      <button class="dock-control" id="voiceMode" type="button" aria-label="Change voice mode">
+        <span class="control-icon"><svg aria-hidden="true"><use id="voiceIconUse" href="#icon-volume"></use></svg></span>
+        <span id="voiceModeLabel">Voice on</span>
+      </button>
+      <label class="volume-control" aria-label="Voice volume">
+        <svg aria-hidden="true"><use href="#icon-wave"></use></svg>
+        <input id="volume" type="range" min="0" max="1" value="0.8" step="0.05" />
+      </label>
+      <span class="dock-separator"></span>
+      <button class="dock-control active" id="captionsToggle" type="button" aria-pressed="true">
+        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-caption"></use></svg></span>
+        <span>Captions</span>
+      </button>
+      <button class="dock-control" id="layoutToggle" type="button">
+        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-layout"></use></svg></span>
+        <span>Focus</span>
+      </button>
+      <button class="dock-control" id="presentToggle" type="button">
+        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-present"></use></svg></span>
+        <span>Present</span>
+      </button>
+      <button class="dock-control details-toggle" id="detailsToggle" type="button">
+        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-more"></use></svg></span>
+        <span>Details</span>
+      </button>
+    </nav>
+
+    <div class="toast-region" id="toasts" aria-live="polite"></div>
+
+    <dialog class="confirm-dialog" id="confirmDialog">
+      <form method="dialog">
+        <span class="dialog-icon"><svg aria-hidden="true"><use href="#icon-alert"></use></svg></span>
+        <h2 id="confirmTitle">Confirm action</h2>
+        <p id="confirmText"></p>
+        <div class="dialog-actions">
+          <button class="glass-button" type="submit" value="cancel">Cancel</button>
+          <button class="glass-button positive" id="confirmAction" type="submit" value="confirm">Confirm</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="renderer.js"></script>
   </body>
 </html>

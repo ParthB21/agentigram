@@ -1,7 +1,7 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const { existsSync, readFileSync } = require('node:fs');
+const { existsSync, readFileSync, readdirSync, statSync } = require('node:fs');
 const { createConnection } = require('node:net');
 const { homedir } = require('node:os');
 const path = require('node:path');
@@ -10,7 +10,7 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const STATUS_INTERVAL_MS = 1_000;
 const IPC_TIMEOUT_MS = 1_000;
 const RESUBSCRIBE_MS = 1_000;
-const root = path.resolve(process.env.AGENTIGRAM_ROOT || process.cwd());
+let root = path.resolve(process.env.AGENTIGRAM_ROOT || process.cwd());
 let voiceSettings = { enabled: true, volume: 0.8 };
 let statusTimer;
 let stream = null;
@@ -23,7 +23,43 @@ function statePath() {
 
 function installState() {
   const file = statePath();
-  return existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : undefined;
+  if (existsSync(file)) return readState(file);
+
+  // A packaged app is normally launched from the Start menu or Finder rather
+  // than a repository. In that case, attach to the most recently configured
+  // Agentigram workspace instead of treating the application directory as a
+  // project root. `agg ui` still supplies an explicit root and takes priority.
+  if (process.env.AGENTIGRAM_ROOT) return undefined;
+  const directory = path.join(homedir(), '.agentigram', 'installations');
+  if (!existsSync(directory)) return undefined;
+  const candidates = readdirSync(directory)
+    .filter((name) => name.endsWith('.json'))
+    .map((name) => path.join(directory, name))
+    .map((file) => {
+      try {
+        return { file, modified: statSync(file).mtimeMs };
+      } catch {
+        return { file, modified: 0 };
+      }
+    })
+    .sort((left, right) => right.modified - left.modified)
+    .map(({ file }) => file);
+  for (const candidate of candidates) {
+    const state = readState(candidate);
+    if (!state?.root || !state?.socketPath) continue;
+    root = path.resolve(state.root);
+    return state;
+  }
+  return undefined;
+}
+
+function readState(file) {
+  try {
+    const state = JSON.parse(readFileSync(file, 'utf8'));
+    return state && typeof state === 'object' ? state : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function requestDaemon(request) {
@@ -104,7 +140,8 @@ function subscribe() {
       buffer = buffer.slice(newline + 1);
       if (line.trim()) {
         try {
-          broadcast('agentigram:frame', JSON.parse(line));
+          const frame = JSON.parse(line);
+          if (isRoomFrame(frame)) broadcast('agentigram:frame', frame);
         } catch {
           // A malformed frame is not worth taking the window down for.
         }
@@ -114,6 +151,34 @@ function subscribe() {
   });
   socket.on('error', () => scheduleResubscribe());
   socket.on('close', () => scheduleResubscribe());
+}
+
+/** Validate the local socket boundary before data reaches the sandboxed renderer. */
+function isRoomFrame(frame) {
+  if (!frame || typeof frame !== 'object' || typeof frame.t !== 'string') return false;
+  if (frame.t === 'state') return Boolean(frame.state && typeof frame.state === 'object');
+  if (frame.t === 'wake') {
+    return typeof frame.sessionId === 'string' && Number.isInteger(frame.seq);
+  }
+  if (frame.t !== 'event') return false;
+  if (
+    !Number.isInteger(frame.seq) ||
+    typeof frame.eventType !== 'string' ||
+    typeof frame.text !== 'string'
+  ) {
+    return false;
+  }
+  if (frame.sessionId !== undefined && typeof frame.sessionId !== 'string') return false;
+  if (frame.speech === undefined) return true;
+  return (
+    frame.speech &&
+    typeof frame.speech === 'object' &&
+    typeof frame.speech.speaker === 'string' &&
+    typeof frame.speech.text === 'string' &&
+    Number.isInteger(frame.speech.priority) &&
+    frame.speech.priority >= 0 &&
+    frame.speech.priority <= 3
+  );
 }
 
 function scheduleResubscribe() {
@@ -130,12 +195,15 @@ function createWindow() {
   // features. On Windows a transparent frameless window loses its close button
   // and paints badly, so everything there stays a normal opaque window.
   const isMac = process.platform === 'darwin';
+  const isWindows = process.platform === 'win32';
   const window = new BrowserWindow({
-    width: 1040,
-    height: 680,
+    width: 1240,
+    height: 780,
     minWidth: 720,
-    minHeight: 480,
-    backgroundColor: isMac ? '#00000000' : '#0B0F14',
+    minHeight: 500,
+    show: false,
+    autoHideMenuBar: true,
+    backgroundColor: isMac || isWindows ? '#00000000' : '#07090F',
     ...(isMac
       ? {
           transparent: true,
@@ -144,7 +212,16 @@ function createWindow() {
           vibrancy: 'under-window',
           visualEffectState: 'active',
         }
-      : {}),
+      : isWindows
+        ? {
+            titleBarStyle: 'hidden',
+            titleBarOverlay: {
+              color: '#00000000',
+              symbolColor: '#DDE4F4',
+              height: 64,
+            },
+          }
+        : {}),
     roundedCorners: true,
     hasShadow: true,
     webPreferences: {
@@ -154,6 +231,16 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
+  if (isWindows && typeof window.setBackgroundMaterial === 'function') {
+    try {
+      window.setBackgroundMaterial('mica');
+    } catch {
+      // Windows versions without DWM backdrop support keep the CSS material.
+    }
+  }
+  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  window.webContents.on('will-navigate', (event) => event.preventDefault());
+  window.once('ready-to-show', () => window.show());
   window.loadFile(path.join(__dirname, 'index.html'));
 }
 
