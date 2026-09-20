@@ -6,13 +6,13 @@
 // the same person.
 const NAMES = ['Jon', 'Lea', 'Gary', 'Jenna', 'Mike', 'Laura']
 const DELIVERY = [
-  'monotone yet slightly fast in delivery',
-  'expressive and animated with a slightly low pitch',
-  'calm and slow with a clear, steady tone',
-  'warm and moderately paced with a high pitch',
-  'crisp and confident at a moderate pace'
+  'speaks in a natural, conversational tone with clear articulation and moderate pace',
+  'has a bright, warm, and friendly voice with natural inflection at a comfortable pace',
+  'speaks clearly and confidently with a calm, smooth tone at a steady pace',
+  'has a crisp, articulate voice with an upbeat, natural delivery',
+  'speaks with a pleasant, clear voice and natural, easy-going cadence',
 ]
-const FIXED = 'with a very close recording that has almost no background noise.'
+const FIXED = 'The recording quality is excellent, close-up, and free of background noise.'
 
 // FNV-1a, 32-bit. Not cryptographic; it only has to be stable and spread out.
 function hash(text) {
@@ -28,7 +28,8 @@ function voiceFor(sessionId) {
   const h = hash(String(sessionId))
   const name = NAMES[h % NAMES.length]
   const delivery = DELIVERY[Math.floor(h / NAMES.length) % DELIVERY.length]
-  return `${name}'s voice is ${delivery}, ${FIXED}`
+  return `${name} ${delivery}. ${FIXED}`
 }
 
 module.exports = { voiceFor, NAMES, DELIVERY }
+

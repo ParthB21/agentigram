@@ -10,7 +10,7 @@ import { isPresenceEvent, type SpeechMetadata, speechMetadata } from './event-re
  * narrated every write would evict the negotiation from an eight-line queue. One line, then
  * silence, then one line that accounts for everything saved in between.
  */
-export const WRITE_COOLDOWN_MS = 8_000;
+export const WRITE_COOLDOWN_MS = 30_000;
 
 /**
  * How long an arrival or a departure stays said.
@@ -20,7 +20,8 @@ export const WRITE_COOLDOWN_MS = 8_000;
  * three times within a second. Saying it once is the whole rule: a genuine rejoin minutes later
  * is news again, and is spoken again.
  */
-export const REPEAT_WINDOW_MS = 30_000;
+/** 5 minutes: stops agents re-saying the same line on every replan cycle. */
+export const REPEAT_WINDOW_MS = 5 * 60_000;
 
 /** Beyond this many, a person says "and two other files" rather than reciting a list. */
 const MAX_NAMED = 2;

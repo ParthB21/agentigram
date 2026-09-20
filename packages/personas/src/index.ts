@@ -9,13 +9,11 @@ const NOTABLE_TYPES = new Set([
   'DUEL_RESULT',
 ]);
 const SPEAKABLE_TYPES = new Set([
-  'INTENT',
   'DISCOVERY',
   'BLOCKER',
   'BUG',
   'MESSAGE',
   'COMPLETE_CLAIMED',
-  'API_DELTA',
   'COLLISION',
   'LEASE_DENIED',
   'PROPOSAL',
