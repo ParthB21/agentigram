@@ -124,6 +124,14 @@ model and fails if the grammar-constrained contract does not parse. Run it after
 | — | `scripts/bare.mjs`, `scripts/warm.js`, `scripts/negotiate.js` | Self-contained Bare launch; model pre-warm; live prompt check |
 | `app.js`, `workers/main.js` | Unchanged | OTA updates are how the team gets new builds |
 | `bare-runtime` 1.29.4 | `^1.33.4` | `@qvac/inference` needs `bare ^1.30.3`; 1.29.4's semver cannot even parse that range |
+| — | `overrides: { "bare-module": "^7" }` | Bare 1.33.4 bundles bare-module 7; the transitive `^6` shadows it inside a worker thread |
+
+### If a worker dies with `defaultProtocol.postresolve is not a function`
+
+`bare-module` drifted out of sync with the bundled one again. Bare's own `Addon.resolve` calls
+`protocol.postresolve`, which only exists from bare-module 7; `bare-worker`, `bare-sidecar` and
+`lunte` all ask for `^6`. The npm copy wins inside a worker thread, so `npm run warm` (no worker)
+passes while the TUI fails. Check with `npm ls bare-module` and widen the `overrides` pin.
 
 ### Versions checked (2026-09-19)
 
