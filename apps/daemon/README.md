@@ -10,8 +10,8 @@ labelled peer context, and restores every modified configuration file on `leave`
 
 ```bash
 npm run setup                       # once per clone; installs and links `agg`
-agg create backend                  # add --host when it cannot be detected
-agg join '<invite>' payments
+agg create backend --host claude
+agg join '<invite>' payments --host codex
 agg start                           # Bare/Pear TUI; `agg tui` is equivalent
 agg status
 agg leave

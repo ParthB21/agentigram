@@ -57,17 +57,17 @@ and globally links the short `agg` command. To defer the roughly 0.74 GB model d
 The normal P2P workflow is then:
 
 ```bash
-agg create backend                    # authority laptop; prints an invite
-agg join '<invite>' payments          # each additional laptop
+agg create backend --host claude      # authority laptop; prints an invite
+agg join '<invite>' payments --host codex # each additional laptop
 agg start                             # launch the terminal UI (`agg tui` also works)
 agg status                            # inspect the room/daemon
 agg leave                             # stop and restore local host configuration
 ```
 
-Agentigram detects Codex, Claude Code, and Gemini from their environment. If you launch it from a
-plain terminal or have several hosts installed, select one explicitly, for example
-`agg create backend --host codex`. The current directory is the repository by default, so `--root .`
-is no longer needed. Session names are positional; the older `--session backend` form still works.
+Agentigram uses the active Codex, Claude Code, or Gemini environment when it can identify one. From
+a plain terminal, `--host` is required so it can never modify the wrong host's configuration. The
+current directory is the repository by default, so `--root .` is no longer needed. Session names are
+positional; the older `--session backend` form still works.
 
 After a checkout update, `agg setup` repairs dependencies and warms the model again. The original
 long-form scripts remain available for CI and troubleshooting. Run all checks with:

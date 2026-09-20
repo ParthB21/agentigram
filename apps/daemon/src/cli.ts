@@ -43,7 +43,12 @@ function requiredState(root: string): InstallState {
   return state;
 }
 
-function host(value: string): InstallState['host'] {
+function host(value?: string): InstallState['host'] {
+  if (!value) {
+    throw new Error(
+      'could not detect an agent host; pass --host claude, --host codex, --host gemini, or --host antigravity',
+    );
+  }
   if (value === 'claude' || value === 'claude-code') return 'claude-code';
   if (value === 'codex') return 'codex';
   if (value === 'gemini' || value === 'gemini-cli') return 'gemini-cli';
@@ -51,13 +56,12 @@ function host(value: string): InstallState['host'] {
   throw new Error('--host must be claude, codex, gemini, or antigravity');
 }
 
-function defaultHost(fallback: string): string {
-  if (process.env.AGENTIGRAM_HOST) return process.env.AGENTIGRAM_HOST;
-  if (process.env.CODEX_THREAD_ID || process.env.CODEX_SESSION_ID || process.env.CODEX_CI)
-    return 'codex';
-  if (process.env.CLAUDECODE || process.env.CLAUDE_CODE_ENTRYPOINT) return 'claude';
-  if (process.env.GEMINI_CLI || process.env.GEMINI_CLI_HOME) return 'gemini';
-  return fallback;
+export function detectHost(env: NodeJS.ProcessEnv = process.env): string | undefined {
+  if (env.AGENTIGRAM_HOST) return env.AGENTIGRAM_HOST;
+  if (env.CODEX_THREAD_ID || env.CODEX_SESSION_ID || env.CODEX_CI) return 'codex';
+  if (env.CLAUDECODE || env.CLAUDE_CODE_ENTRYPOINT) return 'claude';
+  if (env.GEMINI_CLI || env.GEMINI_CLI_HOME) return 'gemini';
+  return undefined;
 }
 
 function sessionName(positional?: string, option?: string): string {
@@ -203,9 +207,37 @@ async function waitForDaemon(state: InstallState): Promise<Record<string, unknow
       await new Promise((resolve) => setTimeout(resolve, DAEMON_POLL_MS));
     }
   }
-  throw new Error(
-    'daemon did not become ready; run `agg daemon --root <path>` to inspect logs',
-  );
+  throw new Error('daemon did not become ready; run `agg daemon --root <path>` to inspect logs');
+}
+
+async function startDaemonOrRollback(state: InstallState): Promise<Record<string, unknown>> {
+  startDaemon(state);
+  try {
+    return await waitForDaemon(state);
+  } catch (error) {
+    if (state.pid) {
+      try {
+        process.kill(state.pid, 'SIGTERM');
+        await waitForExit(state.pid);
+      } catch {
+        // A process that already exited is exactly what rollback needs.
+      }
+    }
+
+    try {
+      uninstall(state.root);
+    } catch (rollbackError) {
+      throw new Error(
+        `daemon startup failed and automatic configuration rollback also failed: ${rollbackError instanceof Error ? rollbackError.message : rollbackError}`,
+        { cause: error },
+      );
+    }
+
+    throw new Error(
+      `daemon startup failed; Agentigram restored the previous host configuration. ${error instanceof Error ? error.message : error}`,
+      { cause: error },
+    );
+  }
 }
 
 export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? process.cwd()): Command {
@@ -241,7 +273,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .option('--root <path>', 'repository root', defaultRoot)
     .option('--room <id>', 'room identifier', 'hackathon')
     .option('--session <id>', 'local agent session name (legacy form)')
-    .option('--host <host>', 'claude, codex, gemini, or antigravity', defaultHost('claude'))
+    .option('--host <host>', 'claude, codex, gemini, or antigravity', detectHost())
     .option('--engineer <id>', 'engineer identifier')
     .action(
       async (
@@ -250,7 +282,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           root: string;
           room: string;
           session?: string;
-          host: string;
+          host?: string;
           engineer?: string;
         },
       ) => {
@@ -269,8 +301,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           capability: createCapability(),
           engineerId: options.engineer,
         });
-        startDaemon(state);
-        const status = await waitForDaemon(state);
+        const status = await startDaemonOrRollback(state);
         console.log(`Created room ${state.roomId}.`);
         console.log(`Invite: ${String(status.invite)}`);
         if (selectedHost === 'codex')
@@ -291,13 +322,13 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .description('Join a P2P room from another laptop.')
     .option('--root <path>', 'repository root', defaultRoot)
     .option('--session <id>', 'local agent session name (legacy form)')
-    .option('--host <host>', 'claude, codex, gemini, or antigravity', defaultHost('antigravity'))
+    .option('--host <host>', 'claude, codex, gemini, or antigravity', detectHost())
     .option('--engineer <id>', 'engineer identifier')
     .action(
       async (
         inviteUri: string,
         session: string | undefined,
-        options: { root: string; session?: string; host: string; engineer?: string },
+        options: { root: string; session?: string; host?: string; engineer?: string },
       ) => {
         const root = resolveRoot(options.root);
         verifyRepository(root);
@@ -319,8 +350,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           invite,
           engineerId: options.engineer,
         });
-        startDaemon(state);
-        await waitForDaemon(state);
+        await startDaemonOrRollback(state);
         console.log(`Joined room ${state.roomId} as ${state.sessionId}.`);
         if (selectedHost === 'codex')
           console.log('Open /hooks in Codex and trust the Agentigram hooks.');

@@ -36,7 +36,7 @@ The TUI is a *view* on a room; the daemon owns the room. Start the daemon first:
 npm run setup
 
 # then, from the repo you are coordinating
-agg create backend   # or: agg join '<invite>' payments
+agg create backend --host claude   # or: agg join '<invite>' payments --host codex
 agg start
 ```
 
