@@ -99,6 +99,7 @@ Reference: `openagents-develop/` (OpenAgents, Apache 2.0). We took architecture 
 - 2026-09-19 · half 1 · Protocol changes are additive only: optional write fencing token, lease grantee/TTL, session read/write sets and negotiation deadline · existing scenario fixtures and other-half packages continue to parse.
 - 2026-09-19 · half 1 · The Cloudflare Durable Object remains an optional adapter over the same `RoomCore` · preserves the existing tested hosted path without making it the primary architecture.
 - 2026-09-19 · half 1 · The macOS Electron window exposes only five narrow preload methods; renderer Node integration stays disabled and sandboxing/context isolation remain enabled · live local status does not justify a privileged renderer.
+- 2026-09-20 · half 1 · The Electron room is the native meeting experience: platform Mica/vibrancy, stable agent tiles, system speech and playback-driven speaking state, packaged as a desktop archive · preserves a secure app format without introducing a browser server or privileged renderer.
 
 ## Part 3 · M0/M1 Demo repo and symbol index (2026-09-19)
 

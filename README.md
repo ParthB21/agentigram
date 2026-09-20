@@ -97,8 +97,11 @@ Other useful commands:
 # One-laptop P2P smoke test: 4 peers, a lease denial and a tier-1 collision
 agg demo --scenario user-id-uuid --peers 4
 
-# Local transparent macOS window (the older Electron shell)
+# Native desktop meeting room (Electron; no browser server)
 agg ui
+
+# Build a portable desktop bundle for the current platform
+npx pnpm@10.34.5 --filter @agentigram/daemon ui:make
 ```
 
 Every laptop must be a clone of the same Git repository — the invite carries a fingerprint derived
@@ -116,7 +119,7 @@ from `remote.origin.url`, and a clone with a different remote is refused.
 | `packages/p2p` | 1 | Hyperswarm discovery, Protomux control channel, Corestore/Hypercore event replication, room invites. |
 | `packages/adapters` | 2 | Agent-host adapter registry, health tracking, secret redaction, peer-data wrapper. |
 | `packages/mcp` | 2 | MCP tool definitions and input validation, generated from protocol schemas. |
-| `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex/Gemini hooks, MCP, watcher, tier-0/1 collision detection (`collide.ts`), secure Electron bridge. |
+| `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex/Gemini hooks, MCP, watcher, tier-0/1 collision detection (`collide.ts`), and the native agent meeting room. |
 | `apps/tui` | Half 1 | **Bare/Pear room view.** QVAC on-device negotiation, bare-tui, Pear OTA. Installs with npm; outside the pnpm workspace. |
 | `packages/analysis`, `packages/contracts`, `apps/specmerge`, `apps/github`, `demo-repo` | 3 | Stubs with agreed signatures. |
 | `packages/league`, `packages/stats`, `packages/personas`, `apps/web` | 4 | Stubs, plus a dashboard shell that prints the raw event stream. |

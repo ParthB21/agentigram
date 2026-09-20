@@ -13,8 +13,28 @@ npm run setup                       # once per clone; installs and links `agg`
 agg create backend --host claude
 agg join '<invite>' payments --host codex
 agg start                           # Bare/Pear TUI; `agg tui` is equivalent
+agg ui                              # native animated meeting room
 agg status
 agg leave
+```
+
+## Desktop meeting room
+
+`agg ui` opens a packaged-app-style Electron room rather than a browser page. It renders each coding
+agent as a stable participant tile, animates live activity and collision state, and provides dialogue,
+negotiation and human-decision controls in a glass meeting interface. System speech synthesis is
+queued by priority; speaking indicators and captions follow the audio engine's real start, boundary
+and end events instead of guessing from message arrival.
+
+The renderer remains sandboxed with context isolation and no Node integration. Windows uses the
+native Mica backdrop when available, macOS uses vibrancy, and other platforms retain the same CSS
+glass treatment. Local agents are audible by default; remote agents start muted and can be enabled
+individually from their tile.
+
+Build a portable desktop archive for the current platform with:
+
+```bash
+npx pnpm@10.34.5 --filter @agentigram/daemon ui:make
 ```
 
 The previous `pnpm agentigram ...`, `--root`, and `--session` forms remain supported.
@@ -34,7 +54,7 @@ Checked against official documentation on 2026-09-19:
   `stream-json`). Used by the M3 duel milestone, not M1.
 - MCP TypeScript SDK 1.30.0: low-level `Server` request handlers with `StdioServerTransport`.
 - Electron 38.8.6: secure `BrowserWindow` with context isolation, sandboxing, no Node integration,
-  a preload boundary, CSP, and the standard macOS application lifecycle.
+  a narrow preload boundary, CSP, native Mica/vibrancy backdrops, and standard application lifecycle.
 - Codex hooks: project `.codex/hooks.json`, command hooks for lifecycle/tool events, and the current
   `PreToolUse` permission-decision contract. Codex requires the generated hooks to be trusted.
 - Pear/Holepunch modules: Hyperswarm 4.17.1, Corestore 7.12.5, Protomux 3.12.0 and
