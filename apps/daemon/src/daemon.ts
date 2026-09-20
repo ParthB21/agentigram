@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { appendFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import {
   type AgentAdapter,
   type AntigravityHookInput,
@@ -41,6 +41,19 @@ import { SymbolReader } from './symbol-reader.js';
 import { WorktreeWatcher } from './watcher.js';
 
 const SESSION_HEARTBEAT_MS = 10_000;
+/**
+ * How long after its last real event a session is still called "working".
+ *
+ * Activity is derived from the replicated event stream rather than stored on
+ * the session, so every laptop reaches the same answer without a new event type
+ * — and a session that simply stopped, crashed or was closed decays to idle on
+ * its own instead of advertising a task it finished ten minutes ago.
+ */
+const IDLE_AFTER_MS = 45_000;
+/** How often the room view is refreshed so idleness becomes visible. */
+const IDLE_TICK_MS = 5_000;
+/** Liveness, not work. A heartbeat must not make an idle agent look busy. */
+const ACTIVITY_IGNORED = new Set(['HEARTBEAT', 'PERSONA_LINES', 'SESSION_ENDED']);
 const AGENT_WRITE_MATCH_WINDOW_MS = 5_000;
 const MAX_INBOX_EVENTS = 20;
 const ACTIONABLE_TYPES = new Set([
@@ -76,6 +89,8 @@ export class LaptopDaemon {
   private readonly recentAgentWrites = new Map<string, number>();
   private readonly inbox = new Map<string, string[]>();
   private readonly subscribers = new Set<(frame: IpcFrame) => void>();
+  /** sessionId -> when it last did something, and what. Derived, never stored. */
+  private readonly activity = new Map<string, { at: number; what: string }>();
   private readonly symbols: SymbolReader;
   private readonly adapter: AgentAdapter;
   private readonly transport: RoomTransport;
@@ -83,6 +98,7 @@ export class LaptopDaemon {
   private roomState: RoomState;
   private readonly server;
   private heartbeat: NodeJS.Timeout | undefined;
+  private idleTick: NodeJS.Timeout | undefined;
 
   constructor(private readonly state: InstallState) {
     this.symbols = new SymbolReader(state.root, this.log);
@@ -124,6 +140,11 @@ export class LaptopDaemon {
       () => this.transport.heartbeat(this.state.sessionId),
       SESSION_HEARTBEAT_MS,
     );
+    // Going idle is the absence of events, so nothing would ever push it. Tick
+    // the room view instead, and only while something is watching.
+    this.idleTick = setInterval(() => {
+      if (this.subscribers.size > 0) this.broadcast({ t: 'state', state: this.statusOutput() });
+    }, IDLE_TICK_MS);
     this.log.info(
       { roomId: this.state.roomId, socket: this.state.socketPath, mode: this.state.mode },
       'daemon ready',
@@ -172,6 +193,7 @@ export class LaptopDaemon {
 
   async stop(): Promise<void> {
     clearInterval(this.heartbeat);
+    clearInterval(this.idleTick);
     for (const watcher of this.watchers.values()) await watcher.stop();
     await this.transport.stop();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
@@ -179,6 +201,30 @@ export class LaptopDaemon {
     // throws EINVAL, which `force` does not suppress. Closing the server is
     // what releases it.
     if (!isPipe(this.state.socketPath)) rmSync(this.state.socketPath, { force: true });
+  }
+
+  /**
+   * Note what a session just did, for the "working on X / idle" line in the
+   * room view. Derived from the replicated stream, so every laptop agrees.
+   */
+  private recordActivity(event: Event): void {
+    const sessionId = event.actor.sessionId;
+    if (!sessionId) return;
+    const payload = event.payload;
+    if (ACTIVITY_IGNORED.has(payload.type)) return;
+    const at = Date.parse(event.ts) || Date.now();
+    this.activity.set(sessionId, { at, what: describeActivity(payload) });
+  }
+
+  /** Which sessions are working right now, and at what. */
+  private activitySnapshot(): Record<string, { what: string; sinceMs: number }> {
+    const now = Date.now();
+    const out: Record<string, { what: string; sinceMs: number }> = {};
+    for (const [sessionId, seen] of this.activity) {
+      const sinceMs = now - seen.at;
+      if (sinceMs <= IDLE_AFTER_MS) out[sessionId] = { what: seen.what, sinceMs };
+    }
+    return out;
   }
 
   /** The room as the CLI and the TUI both see it. */
@@ -198,6 +244,7 @@ export class LaptopDaemon {
         (collision) => collision.status === 'open',
       ),
       negotiations: Object.values(this.roomState.negotiations),
+      activity: this.activitySnapshot(),
       summary: this.roomState.teamSummary,
       ...(authority?.inviteUri ? { invite: authority.inviteUri } : {}),
     };
@@ -478,6 +525,7 @@ export class LaptopDaemon {
       if (event.seq <= this.roomState.lastSeq) continue;
       this.roomState = reduce(this.roomState, event).state;
       this.cursor.set(event.seq);
+      this.recordActivity(event);
       // Collisions are opened by the authority as it sequences events
       // (`AuthorityTransport.announceCollisions`), so they arrive here as
       // ordinary replicated events like any other.
@@ -670,4 +718,43 @@ function sessionContext(summary: object): object {
       }),
     },
   };
+}
+
+/**
+ * A short phrase for what a session is doing, from the event alone.
+ *
+ * This is what makes the room view live without the agent cooperating: hooks
+ * report every read, write and tool call already, so an agent never has to be
+ * told to announce itself. `announce_intent` is for stating the *goal* of a
+ * piece of work; this covers the moment-to-moment.
+ */
+function describeActivity(payload: Event['payload']): string {
+  switch (payload.type) {
+    case 'FILE_READ':
+      return `reading ${basename(payload.path)}`;
+    case 'FILE_WRITE':
+      return `editing ${basename(payload.path)}`;
+    case 'TOOL_CALL':
+      return payload.tool === 'HumanPrompt' ? 'given a new prompt' : `running ${payload.tool}`;
+    case 'INTENT':
+      return `planning: ${payload.task}`;
+    case 'LEASE_REQUESTED':
+      return 'claiming symbols';
+    case 'LEASE_DENIED':
+      return 'blocked on a lease';
+    case 'PROPOSAL':
+      return 'proposing a contract';
+    case 'COUNTER':
+      return 'countering a contract';
+    case 'ACCEPT':
+      return 'accepting a contract';
+    case 'MESSAGE':
+      return 'messaging a peer';
+    case 'SESSION_STARTED':
+      return 'starting up';
+    case 'COMPLETE_CLAIMED':
+      return 'wrapping up';
+    default:
+      return payload.type.toLowerCase().replace(/_/g, ' ');
+  }
 }

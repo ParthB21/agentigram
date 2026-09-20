@@ -435,14 +435,28 @@ class App {
       return [style().foreground(MUTED).render(fit('  no agents in the room yet', this.width))]
     }
     const leases = this.state?.leases || []
+    const activity = this.state?.activity || {}
     return agents.map((agent) => {
       const held = leases.filter((lease) => lease.sessionId === agent.sessionId).length
-      const dot = agent.status === 'active' ? style().foreground(OK).render('●') : style().foreground(MUTED).render('○')
+      const busy = activity[agent.sessionId]
+      // Working agents are green and say what they are doing; one that has gone
+      // quiet says so rather than advertising a task it finished long ago.
+      const dot =
+        agent.status === 'ended'
+          ? style().foreground(MUTED).render('○')
+          : busy
+            ? style().foreground(OK).render('●')
+            : style().foreground(MUTED).render('◐')
       const name = pad(agent.sessionId, 12)
       const host = pad(agent.host || '', 12)
-      const task = agent.intent?.task || (agent.status === 'ended' ? 'left' : 'idle')
+      const doing =
+        agent.status === 'ended'
+          ? 'left'
+          : busy
+            ? busy.what
+            : style().foreground(MUTED).render('idle')
       const lock = held ? style().foreground(WARN).render(` 🔒${held}`) : ''
-      return fit(`  ${dot} ${name} ${host} ${task}${lock}`, this.width)
+      return fit(`  ${dot} ${name} ${host} ${doing}${lock}`, this.width)
     })
   }
 

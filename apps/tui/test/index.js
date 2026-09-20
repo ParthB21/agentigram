@@ -88,6 +88,8 @@ const STATE = {
   ],
   leases: [],
   collisions: [COLLISION],
+  // Derived by the daemon from the event stream: who has done something lately.
+  activity: { backend: { what: 'editing user.ts', sinceMs: 1200 } },
   summary: { sessions: 2, activeSessions: 2, openCollisions: 1, activeLeases: 0 }
 }
 
@@ -209,7 +211,28 @@ test('shows the room before the model has loaded', async (t) => {
   t.ok(view.includes('42%'), 'header reports download progress')
   t.ok(view.includes('backend'), 'agents are listed')
   t.ok(view.includes('claude-code') && view.includes('codex'), 'each agent shows its host')
-  t.ok(view.includes('Change User.id to a UUID'), 'shows what each agent is doing')
+  t.ok(view.includes('editing user.ts'), 'a working agent shows what it is doing')
+  t.ok(view.includes('idle'), 'one that has gone quiet says idle')
+})
+
+test('an agent stops advertising a task once it goes quiet', async (t) => {
+  const working = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: STATE }
+  ])
+  t.ok(screen(working).includes('editing user.ts'), 'busy: shows the live activity')
+
+  // Same room, but the daemon no longer reports anyone as active.
+  const quiet = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: { ...STATE, activity: {} } }
+  ])
+  const view = screen(quiet)
+  t.absent(view.includes('editing user.ts'), 'quiet: the activity is gone')
+  t.absent(
+    view.includes('Change User.id to a UUID'),
+    'and the announced task is not shown as if it were still happening'
+  )
 })
 
 test('a collision arriving after load is explained, then drafted, then sendable', async (t) => {

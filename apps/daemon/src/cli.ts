@@ -352,17 +352,36 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
 
   program
     .command('ui')
-    .description('Open the local macOS control window.')
+    .description('Open the desktop control window (read-only room view).')
     .option('--root <path>', 'repository root', defaultRoot)
     .action(async (options: { root: string }) => {
-      const electron = createRequire(import.meta.url)('electron') as string;
+      const root = resolveRoot(options.root);
+      verifyRepository(root);
+      // Fail here rather than letting the window flash and vanish: "not joined"
+      // and "no daemon" are both far better messages than an empty window.
+      requiredState(root);
+      let electron: string;
+      try {
+        electron = createRequire(import.meta.url)('electron') as string;
+      } catch (error) {
+        // pnpm skips Electron's postinstall unless the package is allowed to
+        // build, so the module resolves while its binary was never downloaded.
+        throw new Error(
+          'the Electron binary is not installed. Run:\n' +
+            '  pnpm rebuild electron\n' +
+            'or, if that does not fetch it:\n' +
+            '  node node_modules/.pnpm/electron@*/node_modules/electron/install.js\n' +
+            `(${error instanceof Error ? error.message : String(error)})`,
+        );
+      }
       const main = fileURLToPath(new URL('../ui/main.cjs', import.meta.url));
       const child = spawn(electron, [main], {
         detached: true,
         stdio: 'ignore',
-        env: { ...process.env, AGENTIGRAM_ROOT: resolveRoot(options.root) },
+        env: { ...process.env, AGENTIGRAM_ROOT: root },
       });
       child.unref();
+      console.log(`Control window opened for ${root}.`);
     });
 
   program

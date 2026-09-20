@@ -1,43 +1,49 @@
 <!doctype html>
 <html lang="en">
   <head>
-    <meta charset="UTF-8" />
+    <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+      content="default-src 'none'; style-src 'self'; script-src 'self'; font-src 'self'"
     />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Agentigram</title>
     <link rel="icon" href="favicon.svg" />
     <link rel="stylesheet" href="styles.css" />
-    <script src="renderer.js" defer></script>
   </head>
   <body>
-    <main class="window">
-      <header>
-        <div class="brand"><span class="mark" aria-hidden="true"></span><strong>Agentigram</strong></div>
-        <span class="status"><i></i><span id="connection">Connecting</span></span>
-      </header>
-
-      <div class="content">
-        <p class="room" id="room">Local room</p>
-        <h1 id="headline">Waiting for the local daemon</h1>
-        <p class="summary" id="summary">Agent coordination will appear here.</p>
-
-        <div class="agents" id="agents" aria-live="polite"></div>
-
-        <div class="issue" id="issue" hidden>
-          <span class="issue-mark">!</span>
-          <div><strong id="issue-title"></strong><small id="issue-detail"></small></div>
-        </div>
-
-        <div class="invite" id="invite-row" hidden>
-          <code id="invite"></code>
-          <button id="copy" type="button">Copy invite</button>
-        </div>
+    <header class="titlebar">
+      <div class="brand">
+        <span class="mark"></span>
+        <h1 id="room">agentigram</h1>
+        <span class="chip" id="mode"></span>
       </div>
+      <div class="status">
+        <span class="chip" id="link">connecting</span>
+        <span class="chip" id="counts"></span>
+      </div>
+    </header>
 
-      <footer><span id="sequence">No events yet</span><button id="dashboard" type="button">Open dashboard</button></footer>
+    <main>
+      <section class="panel agents">
+        <h2>Agents</h2>
+        <ul id="agents" class="agents-list">
+          <li class="empty">waiting for the room…</li>
+        </ul>
+      </section>
+
+      <section class="panel negotiation">
+        <h2>Negotiation</h2>
+        <div id="collision" class="collision empty-state">
+          <p class="quiet">No open collisions. Everyone is clear.</p>
+        </div>
+      </section>
+
+      <section class="panel feed">
+        <h2>Room</h2>
+        <ul id="feed" class="feed-list"></ul>
+      </section>
     </main>
+
+    <script src="renderer.js"></script>
   </body>
 </html>

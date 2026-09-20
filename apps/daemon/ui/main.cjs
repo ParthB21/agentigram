@@ -9,9 +9,12 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron');
 
 const STATUS_INTERVAL_MS = 1_000;
 const IPC_TIMEOUT_MS = 1_000;
+const RESUBSCRIBE_MS = 1_000;
 const root = path.resolve(process.env.AGENTIGRAM_ROOT || process.cwd());
 let voiceSettings = { enabled: true, volume: 0.8 };
 let statusTimer;
+let stream = null;
+let resubscribeTimer = null;
 
 function statePath() {
   const key = createHash('sha256').update(root).digest('hex').slice(0, 16);
@@ -63,18 +66,85 @@ async function status() {
   return response.ok ? response.output : { transport: 'closed', error: response.error };
 }
 
+function broadcast(channel, payload) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.webContents.send(channel, payload);
+  }
+}
+
+/**
+ * One long-lived subscription to the daemon, forwarded to the renderer.
+ *
+ * Polling `status` shows the room as it stands but never the events that got it
+ * there, and the event feed is most of what makes the window worth watching.
+ * The daemon drops a subscriber when its socket closes, so reconnecting is the
+ * whole recovery story: a fresh subscribe replays current state.
+ */
+function subscribe() {
+  const state = installState();
+  if (!state) return;
+
+  let socket;
+  try {
+    socket = createConnection(state.socketPath);
+  } catch {
+    scheduleResubscribe();
+    return;
+  }
+  stream = socket;
+
+  let buffer = '';
+  socket.setEncoding('utf8');
+  socket.once('connect', () => socket.write(`${JSON.stringify({ type: 'subscribe' })}\n`));
+  socket.on('data', (chunk) => {
+    buffer += chunk;
+    let newline = buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline);
+      buffer = buffer.slice(newline + 1);
+      if (line.trim()) {
+        try {
+          broadcast('agentigram:frame', JSON.parse(line));
+        } catch {
+          // A malformed frame is not worth taking the window down for.
+        }
+      }
+      newline = buffer.indexOf('\n');
+    }
+  });
+  socket.on('error', () => scheduleResubscribe());
+  socket.on('close', () => scheduleResubscribe());
+}
+
+function scheduleResubscribe() {
+  if (resubscribeTimer) return;
+  stream = null;
+  resubscribeTimer = setTimeout(() => {
+    resubscribeTimer = null;
+    subscribe();
+  }, RESUBSCRIBE_MS);
+}
+
 function createWindow() {
+  // Vibrancy, the inset traffic lights and a transparent background are macOS
+  // features. On Windows a transparent frameless window loses its close button
+  // and paints badly, so everything there stays a normal opaque window.
+  const isMac = process.platform === 'darwin';
   const window = new BrowserWindow({
-    width: 780,
-    height: 500,
-    minWidth: 620,
-    minHeight: 420,
-    transparent: true,
-    backgroundColor: '#00000000',
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 18, y: 18 },
-    vibrancy: 'under-window',
-    visualEffectState: 'active',
+    width: 1040,
+    height: 680,
+    minWidth: 720,
+    minHeight: 480,
+    backgroundColor: isMac ? '#00000000' : '#0B0F14',
+    ...(isMac
+      ? {
+          transparent: true,
+          titleBarStyle: 'hiddenInset',
+          trafficLightPosition: { x: 18, y: 18 },
+          vibrancy: 'under-window',
+          visualEffectState: 'active',
+        }
+      : {}),
     roundedCorners: true,
     hasShadow: true,
     webPreferences: {
@@ -116,18 +186,24 @@ ipcMain.handle('agentigram:open-dashboard', async (event) => {
 
 app.whenReady().then(() => {
   createWindow();
+  subscribe();
+  // The stream carries state on connect and after every batch. This poll is the
+  // backstop that keeps the window honest when the daemon is down entirely —
+  // the stream cannot report that, because it is not connected to say so.
   statusTimer = setInterval(async () => {
-    const next = await status();
-    for (const window of BrowserWindow.getAllWindows()) {
-      window.webContents.send('agentigram:status', next);
-    }
+    if (stream) return;
+    broadcast('agentigram:status', await status());
   }, STATUS_INTERVAL_MS);
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
 
-app.on('before-quit', () => clearInterval(statusTimer));
+app.on('before-quit', () => {
+  clearInterval(statusTimer);
+  clearTimeout(resubscribeTimer);
+  stream?.destroy();
+});
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
