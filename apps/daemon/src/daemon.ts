@@ -752,8 +752,16 @@ function describeActivity(payload: Event['payload']): string {
       return `reading ${basename(payload.path)}`;
     case 'FILE_WRITE':
       return `editing ${basename(payload.path)}`;
-    case 'TOOL_CALL':
-      return payload.tool === 'HumanPrompt' ? 'given a new prompt' : `running ${payload.tool}`;
+    case 'TOOL_CALL': {
+      if (payload.tool === 'HumanPrompt') return 'given a new prompt';
+      // A file it touched beats naming the tool: "looking at checkout.ts" is
+      // what a person wants to know, not which binary produced it.
+      if (payload.paths?.length) {
+        const [first, ...rest] = payload.paths.map((path) => basename(path));
+        return `looking at ${first}${rest.length ? ` +${rest.length}` : ''}`;
+      }
+      return `running ${toolLabel(payload.tool)}`;
+    }
     case 'INTENT':
       return `planning: ${payload.task}`;
     case 'LEASE_REQUESTED':
@@ -775,4 +783,20 @@ function describeActivity(payload: Event['payload']): string {
     default:
       return payload.type.toLowerCase().replace(/_/g, ' ');
   }
+}
+
+/**
+ * A tool name fit for a one-line status.
+ *
+ * The Claude adapter packs a redacted copy of the shell command into the tool
+ * name (`Bash: cd /repo && sed -n 1,40p src/x.ts`), which is useful in a
+ * transcript and unreadable in a room view. Keep the tool, drop the command,
+ * and turn an MCP triple into just the tool it names.
+ */
+export function toolLabel(tool: string): string {
+  const base = String(tool).split(':')[0]?.trim() ?? '';
+  const mcp = base.match(/^mcp__[^_]+__(.+)$/);
+  if (mcp?.[1]) return mcp[1].replace(/_/g, ' ');
+  if (base === 'Bash' || base === 'shell') return 'a shell command';
+  return base || 'a tool';
 }

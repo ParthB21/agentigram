@@ -16,8 +16,14 @@ export function summarise(e: Event): string {
       return `#${e.seq} ${who} MESSAGE -> ${p.to}`;
     // Naming the tool is what tells you whether a host's reads are being
     // recognised: an unrecognised read shows up here as a bare TOOL_CALL.
-    case 'TOOL_CALL':
-      return `#${e.seq} ${who} TOOL_CALL ${p.tool}${p.paths?.length ? ` ${p.paths.join(', ')}` : ''}`;
+    //
+    // The Claude adapter packs a redacted copy of the command into the tool
+    // name, which is far too long for a feed line — keep the tool, drop the
+    // command, and let the paths carry the detail.
+    case 'TOOL_CALL': {
+      const tool = String(p.tool).split(':')[0]?.trim() || 'tool';
+      return `#${e.seq} ${who} TOOL_CALL ${tool}${p.paths?.length ? ` ${p.paths.join(', ')}` : ''}`;
+    }
     default:
       return `#${e.seq} ${who} ${p.type}`;
   }
