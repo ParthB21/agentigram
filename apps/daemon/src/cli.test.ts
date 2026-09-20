@@ -82,4 +82,34 @@ describe('agentigram CLI', () => {
     });
     expect(line).toBe('#7 backend FILE_WRITE a.ts');
   });
+
+  it('uses clear room lifecycle language', () => {
+    const base = {
+      id: 'lifecycle',
+      roomId: 'r',
+      ts: '2026-09-20T00:00:00.000Z',
+      actor: { engineerId: 'eng', sessionId: 'frontend', kind: 'agent' as const },
+      source: 'hook' as const,
+    };
+    expect(
+      summarise({
+        ...base,
+        seq: 8,
+        payload: {
+          type: 'SESSION_STARTED',
+          sessionId: 'frontend',
+          host: 'codex',
+          model: 'unknown',
+          branch: 'main',
+        },
+      }),
+    ).toBe('#8 frontend joined the room');
+    expect(
+      summarise({
+        ...base,
+        seq: 9,
+        payload: { type: 'SESSION_ENDED', sessionId: 'frontend', reason: 'daemon_stopped' },
+      }),
+    ).toBe('#9 frontend left the room');
+  });
 });

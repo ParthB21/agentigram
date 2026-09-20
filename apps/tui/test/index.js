@@ -252,6 +252,49 @@ test('an agent stops advertising a task once it goes quiet', async (t) => {
   )
 })
 
+test('leave and same-session rejoin update the roster and feed immediately', async (t) => {
+  const withoutPayments = {
+    ...STATE,
+    agents: STATE.agents.filter((agent) => agent.sessionId !== 'payments'),
+    presence: { backend: 'live', payments: 'ended' },
+    summary: { ...STATE.summary, activeSessions: 1 }
+  }
+  const rejoined = {
+    ...STATE,
+    presence: { backend: 'live', payments: 'live' }
+  }
+  let app = await drive(new App({ inference: fakeInference(), room: fakeRoom() }), [
+    resize,
+    { type: 'room.state', state: STATE },
+    {
+      type: 'room.event',
+      frame: { seq: 8, eventType: 'SESSION_ENDED', text: '#8 payments left the room' }
+    },
+    { type: 'room.state', state: withoutPayments }
+  ])
+  t.ok(screen(app).includes('payments left the room'), 'departure is visible in the live feed')
+  t.absent(
+    app.state.agents.some((agent) => agent.sessionId === 'payments'),
+    'departure removes the roster row'
+  )
+
+  app = await drive(app, [
+    {
+      type: 'room.event',
+      frame: { seq: 9, eventType: 'SESSION_STARTED', text: '#9 payments joined the room' }
+    },
+    { type: 'room.state', state: rejoined }
+  ])
+
+  const view = screen(app)
+  t.ok(view.includes('payments joined the room'), 'same-id rejoin is visible in the live feed')
+  t.ok(
+    app.state.agents.some((agent) => agent.sessionId === 'payments'),
+    'rejoin restores the row'
+  )
+  t.ok(view.includes('2/2 online'), 'footer uses current live presence')
+})
+
 test('a collision arriving after load is explained, then drafted, then sendable', async (t) => {
   const inference = fakeInference()
   const room = fakeRoom()

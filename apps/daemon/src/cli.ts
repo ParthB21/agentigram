@@ -172,17 +172,18 @@ function repositoryFingerprint(root: string): string {
 }
 
 /** Poll until the process is gone, or give up — a stuck daemon must not block `leave`. */
-async function waitForExit(pid: number, timeoutMs = 5_000): Promise<void> {
+async function waitForExit(pid: number, timeoutMs = 5_000): Promise<boolean> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
       // Signal 0 tests for existence without delivering anything.
       process.kill(pid, 0);
     } catch {
-      return;
+      return true;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
+  return false;
 }
 
 function startDaemon(state: InstallState): void {
@@ -371,16 +372,26 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .option('--root <path>', 'repository root', defaultRoot)
     .action(async (options: { root: string }) => {
       const state = requiredState(resolveRoot(options.root));
+      let stopped = false;
+      try {
+        const response = await requestIpc(state.socketPath, { type: 'shutdown' }, 1_000);
+        stopped = response.ok;
+      } catch {
+        // Fall back to the stored PID for old or crashed daemons.
+      }
       if (state.pid) {
-        try {
-          process.kill(state.pid, 'SIGTERM');
-        } catch {
-          // A stopped daemon does not prevent exact configuration restoration.
+        if (stopped) stopped = await waitForExit(state.pid);
+        if (!stopped) {
+          try {
+            process.kill(state.pid, 'SIGTERM');
+          } catch {
+            // A stopped daemon does not prevent exact configuration restoration.
+          }
+          // Corestore holds an exclusive lock on its storage, and removing that
+          // storage is part of leaving — so wait for the process to actually go
+          // rather than racing it and failing with EBUSY.
+          await waitForExit(state.pid);
         }
-        // Corestore holds an exclusive lock on its storage, and removing that
-        // storage is part of leaving — so wait for the process to actually go
-        // rather than racing it and failing with EBUSY.
-        await waitForExit(state.pid);
       }
       uninstall(state.root);
       console.log(`Left ${state.roomId}. Local configuration restored.`);
@@ -391,12 +402,16 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .description('Run the local daemon in the foreground.')
     .option('--root <path>', 'repository root', defaultRoot)
     .action(async (options: { root: string }) => {
-      const daemon = new LaptopDaemon(requiredState(resolveRoot(options.root)));
-      await daemon.start();
+      let daemon: LaptopDaemon;
+      let stopping = false;
       const stop = async () => {
+        if (stopping) return;
+        stopping = true;
         await daemon.stop();
         process.exit(0);
       };
+      daemon = new LaptopDaemon(requiredState(resolveRoot(options.root)), () => void stop());
+      await daemon.start();
       process.once('SIGINT', stop);
       process.once('SIGTERM', stop);
     });

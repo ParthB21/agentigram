@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { IpcRequestSchema } from './ipc.js';
 
 describe('IPC hook validation', () => {
+  it('accepts graceful daemon shutdown requests', () => {
+    expect(IpcRequestSchema.parse({ type: 'shutdown' })).toEqual({ type: 'shutdown' });
+  });
+
   it('accepts native Gemini CLI hook payloads', () => {
     expect(
       IpcRequestSchema.parse({

@@ -58,6 +58,8 @@ const SESSION_HEARTBEAT_MS = 10_000;
 const IDLE_AFTER_MS = 45_000;
 /** How often the room view is refreshed so idleness becomes visible. */
 const IDLE_TICK_MS = 5_000;
+/** Do not let a broken authority make graceful shutdown hang indefinitely. */
+const SESSION_END_TIMEOUT_MS = 1_500;
 /** Liveness, not work. A heartbeat must not make an idle agent look busy. */
 const ACTIVITY_IGNORED = new Set(['HEARTBEAT', 'PERSONA_LINES', 'SESSION_ENDED']);
 const AGENT_WRITE_MATCH_WINDOW_MS = 5_000;
@@ -91,10 +93,15 @@ export class LaptopDaemon {
   private readonly server;
   private heartbeat: NodeJS.Timeout | undefined;
   private idleTick: NodeJS.Timeout | undefined;
+  private sessionAnnouncement: Promise<void> | undefined;
+  private stopPromise: Promise<void> | undefined;
   private runnerRegistered = false;
   private managedAutonomy = false;
 
-  constructor(private readonly state: InstallState) {
+  constructor(
+    private readonly state: InstallState,
+    private readonly requestShutdown: () => void = () => {},
+  ) {
     this.symbols = new SymbolReader(state.root, this.log);
     this.adapter = createAdapter(state.host);
     this.cursor = CursorStore.forRoom(state.roomId);
@@ -113,9 +120,17 @@ export class LaptopDaemon {
     this.transport.onWelcome((roomState) => {
       this.roomState = roomState;
       this.cursor.set(roomState.lastSeq);
+      this.broadcast({ t: 'state', state: this.statusOutput() });
+      // WELCOME is the first point at which a peer is authenticated. Announce
+      // once per completed handshake so a daemon restart is always a visible
+      // rejoin, even while the previous heartbeat still looks fresh.
+      this.sessionAnnouncement = this.announceSession();
     });
     this.transport.onEvents((events) => this.receive(events));
-    this.transport.onStatus((status) => this.log.info({ status }, 'transport status'));
+    this.transport.onStatus((status) => {
+      this.log.info({ status }, 'transport status');
+      this.broadcast({ t: 'state', state: this.statusOutput() });
+    });
     this.server = createIpcServer(
       state.socketPath,
       (request) => this.handle(request),
@@ -129,7 +144,10 @@ export class LaptopDaemon {
       this.server.once('error', reject);
       this.server.listen(this.state.socketPath, resolve);
     });
-    await this.announceSession();
+    // Authority mode welcomes synchronously during transport.start(). Peers
+    // that are already connected do too; disconnected peers announce from the
+    // WELCOME callback whenever the connection becomes available.
+    await this.sessionAnnouncement;
     this.startOrchestrator();
     this.heartbeat = setInterval(
       () => this.transport.heartbeat(this.state.sessionId),
@@ -157,7 +175,6 @@ export class LaptopDaemon {
    * it does arrive, carries the real model and branch and simply updates it.
    */
   private async announceSession(): Promise<void> {
-    if (this.roomState.sessions[this.state.sessionId]) return;
     try {
       await this.submit({
         id: crypto.randomUUID(),
@@ -178,7 +195,7 @@ export class LaptopDaemon {
       });
     } catch (error) {
       // Not fatal: a peer whose authority is briefly unavailable still runs,
-      // and the next hook or restart re-announces.
+      // and WELCOME on the next reconnect retries the announcement.
       this.log.warn(
         { err: error instanceof Error ? error.message : String(error) },
         'could not announce this session',
@@ -186,16 +203,61 @@ export class LaptopDaemon {
     }
   }
 
-  async stop(): Promise<void> {
+  stop(): Promise<void> {
+    this.stopPromise ??= this.stopOnce();
+    return this.stopPromise;
+  }
+
+  private async stopOnce(): Promise<void> {
     clearInterval(this.heartbeat);
     clearInterval(this.idleTick);
     for (const watcher of this.watchers.values()) await watcher.stop();
+    await this.announceSessionEnded();
     await this.transport.stop();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
     // A Windows named pipe has no directory entry to remove; `unlink` on one
     // throws EINVAL, which `force` does not suppress. Closing the server is
     // what releases it.
     if (!isPipe(this.state.socketPath)) rmSync(this.state.socketPath, { force: true });
+  }
+
+  private async announceSessionEnded(): Promise<void> {
+    const session = this.roomState.sessions[this.state.sessionId];
+    if (!session || session.status === 'ended') return;
+    const event: NewEvent = {
+      id: crypto.randomUUID(),
+      roomId: this.state.roomId,
+      actor: {
+        engineerId: this.state.engineerId,
+        sessionId: this.state.sessionId,
+        kind: 'agent',
+      },
+      source: 'hook',
+      payload: {
+        type: 'SESSION_ENDED',
+        sessionId: this.state.sessionId,
+        reason: 'daemon_stopped',
+      },
+    };
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        this.submit(event),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('session end acknowledgement timed out')),
+            SESSION_END_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } catch (error) {
+      this.log.warn(
+        { err: error instanceof Error ? error.message : String(error) },
+        'could not announce session end',
+      );
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /**
@@ -250,7 +312,11 @@ export class LaptopDaemon {
       transport: this.transport.status,
       lastSeq: this.roomState.lastSeq,
       sessions: [...this.sessions],
-      agents: Object.values(this.roomState.sessions),
+      // The roster is current presence, not an append-only session history.
+      // Departure remains visible in the event feed while the row disappears.
+      agents: Object.values(this.roomState.sessions).filter(
+        (session) => session.status !== 'ended',
+      ),
       leases: Object.values(this.roomState.leases),
       collisions: Object.values(this.roomState.collisions).filter(
         (collision) => collision.status === 'open',
@@ -286,6 +352,11 @@ export class LaptopDaemon {
 
   private async handle(request: IpcRequest): Promise<IpcResponse> {
     if (request.type === 'status') return { ok: true, output: this.statusOutput() };
+    if (request.type === 'shutdown') {
+      // Let IPC write the acknowledgement before stop() closes the server.
+      setImmediate(this.requestShutdown);
+      return { ok: true, output: { shuttingDown: true } };
+    }
     if (request.type === 'runner_register') {
       if (request.sessionId !== this.state.sessionId) return this.wrongRunnerSession();
       this.runnerRegistered = true;

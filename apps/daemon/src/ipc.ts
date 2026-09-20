@@ -20,6 +20,8 @@ const HookRequestSchema = z.object({
   input: z.union([ClaudeHookInputSchema, CodexHookInputSchema, GeminiHookInputSchema]),
 });
 const StatusRequestSchema = z.object({ type: z.literal('status') });
+/** Ask the daemon to publish its departure and shut down cleanly. */
+const ShutdownRequestSchema = z.object({ type: z.literal('shutdown') });
 const HumanRequestSchema = z.object({
   type: z.literal('human'),
   action: z.discriminatedUnion('type', [
@@ -102,6 +104,7 @@ const NarrateRequestSchema = z.object({
 export const IpcRequestSchema = z.discriminatedUnion('type', [
   HookRequestSchema,
   StatusRequestSchema,
+  ShutdownRequestSchema,
   HumanRequestSchema,
   ToolRequestSchema,
   RunnerRegisterRequestSchema,

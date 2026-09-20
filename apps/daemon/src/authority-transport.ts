@@ -153,7 +153,10 @@ export class AuthorityTransport implements RoomTransport {
 
   private async disconnect(peer: AuthorityPeer): Promise<void> {
     if (!peer.sessionId) return;
-    const events = this.core.expireSessionLeases(peer.sessionId, 'disconnect');
+    const events = [
+      ...this.core.expireSessionLeases(peer.sessionId, 'disconnect'),
+      ...this.core.endSession(peer.sessionId, 'disconnect'),
+    ];
     if (events.length > 0) await this.publish(events);
   }
 
