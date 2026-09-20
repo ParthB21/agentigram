@@ -62,13 +62,17 @@ function renderAgents(state) {
 
   const leases = state.leases ?? [];
   const activity = state.activity ?? {};
+  const presence = state.presence ?? {};
   for (const agent of agents) {
     const held = leases.filter((lease) => lease.sessionId === agent.sessionId).length;
-    const busy = activity[agent.sessionId];
-    const ended = agent.status === 'ended';
+    const here = presence[agent.sessionId] ?? 'live';
+    // A laptop that was closed or lost the network never sends SessionEnd, so
+    // `stale` (no heartbeat) is what tells you it is gone rather than thinking.
+    const gone = here !== 'live' || agent.status === 'ended';
+    const busy = gone ? undefined : activity[agent.sessionId];
 
     const row = text('li', 'agent');
-    row.append(text('span', `dot ${busy && !ended ? '' : 'idle'}`.trim()));
+    row.append(text('span', `dot ${busy ? '' : 'idle'}`.trim()));
 
     const body = text('div');
     const name = text('div', 'agent-name', agent.sessionId);
@@ -80,10 +84,17 @@ function renderAgents(state) {
 
     // What it is doing right now, from the event stream — not the goal it
     // announced once and may long since have finished.
-    const doing = ended ? 'left' : busy ? busy.what : 'idle';
-    body.append(text('div', `agent-task${busy && !ended ? '' : ' quiet'}`, doing));
+    const doing =
+      agent.status === 'ended'
+        ? 'left'
+        : here === 'stale'
+          ? 'offline'
+          : busy
+            ? busy.what
+            : 'idle';
+    body.append(text('div', `agent-task${busy ? '' : ' quiet'}`, doing));
     // The announced goal stays as context underneath, while it is still working.
-    if (busy && !ended && agent.intent?.task && agent.intent.task !== doing) {
+    if (busy && agent.intent?.task && agent.intent.task !== doing) {
       body.append(text('div', 'agent-host', agent.intent.task));
     }
     row.append(body);

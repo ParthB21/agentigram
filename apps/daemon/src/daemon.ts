@@ -29,7 +29,7 @@ import {
   NewEventSchema,
   type RoomState,
 } from '@agentigram/protocol';
-import { reduce, routeEvent } from '@agentigram/reducer';
+import { reduce, routeEvent, sessionPresence } from '@agentigram/reducer';
 import pino from 'pino';
 import { AuthorityTransport } from './authority-transport.js';
 import { CursorStore } from './cursor-store.js';
@@ -227,6 +227,23 @@ export class LaptopDaemon {
     return out;
   }
 
+  /**
+   * live / stale / ended per session.
+   *
+   * A session only reaches `ended` if its host fired SessionEnd, which a laptop
+   * that was closed, crashed or lost the network never gets to do. `stale` —
+   * no heartbeat for a while — is what covers those, and it is the difference
+   * between "that agent is thinking" and "that agent is gone".
+   */
+  private presenceSnapshot(): Record<string, string> {
+    const now = Date.now();
+    const out: Record<string, string> = {};
+    for (const sessionId of Object.keys(this.roomState.sessions)) {
+      out[sessionId] = sessionPresence(this.roomState, sessionId, now) ?? 'stale';
+    }
+    return out;
+  }
+
   /** The room as the CLI and the TUI both see it. */
   private statusOutput(): Record<string, unknown> {
     const authority = this.transport instanceof AuthorityTransport ? this.transport : undefined;
@@ -245,6 +262,7 @@ export class LaptopDaemon {
       ),
       negotiations: Object.values(this.roomState.negotiations),
       activity: this.activitySnapshot(),
+      presence: this.presenceSnapshot(),
       summary: this.roomState.teamSummary,
       ...(authority?.inviteUri ? { invite: authority.inviteUri } : {}),
     };

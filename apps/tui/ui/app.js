@@ -436,9 +436,13 @@ class App {
     }
     const leases = this.state?.leases || []
     const activity = this.state?.activity || {}
+    const presence = this.state?.presence || {}
     return agents.map((agent) => {
       const held = leases.filter((lease) => lease.sessionId === agent.sessionId).length
-      const busy = activity[agent.sessionId]
+      // A laptop that was closed never sends SessionEnd; no heartbeat is how
+      // you know it is gone rather than thinking.
+      const here = presence[agent.sessionId] || 'live'
+      const busy = here === 'live' ? activity[agent.sessionId] : undefined
       // Working agents are green and say what they are doing; one that has gone
       // quiet says so rather than advertising a task it finished long ago.
       const dot =
@@ -452,9 +456,11 @@ class App {
       const doing =
         agent.status === 'ended'
           ? 'left'
-          : busy
-            ? busy.what
-            : style().foreground(MUTED).render('idle')
+          : here === 'stale'
+            ? style().foreground(MUTED).render('offline')
+            : busy
+              ? busy.what
+              : style().foreground(MUTED).render('idle')
       const lock = held ? style().foreground(WARN).render(` 🔒${held}`) : ''
       return fit(`  ${dot} ${name} ${host} ${doing}${lock}`, this.width)
     })

@@ -357,6 +357,14 @@ export function uninstall(root: string, runtimeBase?: string): InstallState {
   // throws EINVAL — which `force` does not suppress, so this aborted `leave`
   // before the install state was removed and the repo stayed "already joined".
   if (!isPipe(state.socketPath)) rmSync(state.socketPath, { force: true });
+  // The replicated history lives outside the repository, so without this it
+  // survives `leave` — and the next `create` replays it, bringing back sessions
+  // from a room that was supposedly torn down. Leaving means leaving.
+  rmSync(state.p2pStorage, { recursive: true, force: true });
+  // The cursor is the last seq this machine applied, keyed by room. Keeping it
+  // across a teardown points it past the end of a history that no longer
+  // exists, and every replicated event then looks like one already seen.
+  rmSync(runtimePaths(root, runtimeBase, state.roomId).cursor, { force: true });
   rmSync(statePath, { force: true });
   return state;
 }
