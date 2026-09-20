@@ -831,7 +831,7 @@ export class LaptopDaemon {
       if (frozen) return frozen;
       const lease = this.leaseForPath(path);
       if (lease && lease.sessionId !== this.state.sessionId) {
-        return `${path} is leased by ${lease.sessionId}. Negotiate through Agentigram before editing.`;
+        return `STOP. Do not modify ${path} — not with Edit or Write, not through the shell, not by any other route. It is leased by ${lease.sessionId}. Do not retry. Tell the user what you were about to change, negotiate through Agentigram, and wait.`;
       }
     }
     return undefined;

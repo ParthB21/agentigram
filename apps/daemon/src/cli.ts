@@ -11,6 +11,7 @@ import pino from 'pino';
 import { CursorStore } from './cursor-store.js';
 import { LaptopDaemon } from './daemon.js';
 import { runLocalDemo } from './demo.js';
+import { failClosedDenial, isPreToolEvent } from './fail-closed.js';
 import {
   type InstallState,
   install,
@@ -458,6 +459,24 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     });
 
   program
+    .command('unfreeze <collisionId>')
+    .description('Human decision: release the files frozen by a collision so agents can resume.')
+    .option('--root <path>', 'repository root', defaultRoot)
+    .action(async (collisionId: string, options: { root: string }) => {
+      const state = requiredState(resolveRoot(options.root));
+      // A collision still `Open` ignores a human ACCEPT, so escalate it first; the second
+      // step is then the human accepting the escalation, which is what lifts the freeze.
+      for (const action of [
+        { type: 'escalate' as const, collisionId, reason: 'released by a human' },
+        { type: 'accept_escalation' as const, collisionId },
+      ]) {
+        const response = await requestIpc(state.socketPath, { type: 'human', action }, 5_000);
+        if (!response.ok) throw new Error(response.error);
+      }
+      console.log(`Released ${collisionId}. Frozen agents may resume.`);
+    });
+
+  program
     .command('report')
     .description('Score a room from its event log: who did what, conflicts, model comparison.')
     .option('--root <path>', 'repository root', defaultRoot)
@@ -506,22 +525,27 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .description('Handle an agent-host hook payload from stdin.')
     .requiredOption('--root <path>', 'repository root')
     .action(async (event: string, options: { root: string }) => {
+      let input: unknown;
+      let host: string | undefined;
       try {
-        const input = JSON.parse(await readStdin()) as never;
+        input = JSON.parse(await readStdin());
         const state = requiredState(resolveRoot(options.root));
+        host = state.host;
         const response = await requestIpc(
           state.socketPath,
-          { type: 'hook', event, input },
-          event === 'PreToolUse' || event === 'BeforeTool'
-            ? PRE_TOOL_TIMEOUT_MS
-            : DEFAULT_HOOK_TIMEOUT_MS,
+          { type: 'hook', event, input: input as never },
+          isPreToolEvent(event) ? PRE_TOOL_TIMEOUT_MS : DEFAULT_HOOK_TIMEOUT_MS,
         );
-        process.stdout.write(`${JSON.stringify(response.ok ? (response.output ?? {}) : {})}\n`);
+        if (!response.ok) throw new Error(response.error);
+        process.stdout.write(`${JSON.stringify(response.output ?? {})}\n`);
       } catch (error) {
-        process.stderr.write(
-          `Agentigram hook unavailable: ${error instanceof Error ? error.message : error}\n`,
-        );
-        process.stdout.write('{}\n');
+        const why = error instanceof Error ? error.message : String(error);
+        process.stderr.write(`Agentigram hook unavailable: ${why}\n`);
+        // Fail open everywhere except before a write, and only when a room is installed here: with
+        // no installation there is nothing to protect, and a stale hook must not block the repo.
+        const denial =
+          host && isPreToolEvent(event) ? failClosedDenial(host, input, why) : undefined;
+        process.stdout.write(`${JSON.stringify(denial ?? {})}\n`);
       }
     });
 

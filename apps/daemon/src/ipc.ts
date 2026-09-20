@@ -11,7 +11,12 @@ import { z } from 'zod';
 import { isPipe } from './runtime.js';
 
 const MAX_REQUEST_BYTES = 2 * 1024 * 1024;
-export const PRE_TOOL_TIMEOUT_MS = 300;
+/**
+ * How long a write may wait for the daemon's verdict. A timeout here is no longer a free pass —
+ * it denies the write — so it must comfortably outlast a busy laptop, and stay under the hosts'
+ * own 10 s hook limit.
+ */
+export const PRE_TOOL_TIMEOUT_MS = 3000;
 export const DEFAULT_HOOK_TIMEOUT_MS = 1000;
 
 const HookRequestSchema = z.object({
