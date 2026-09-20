@@ -19,6 +19,7 @@
     "@agentigram/adapters": "workspace:*",
     "@agentigram/mcp": "workspace:*",
     "@agentigram/analysis": "workspace:*",
+    "@agentigram/contracts": "workspace:*",
     "@agentigram/coordinator": "workspace:*",
     "@agentigram/p2p": "workspace:*",
     "@agentigram/personas": "workspace:*",

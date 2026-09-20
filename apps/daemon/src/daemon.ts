@@ -38,6 +38,9 @@ import { speechMetadata } from './event-rendering.js';
 import { isFreshEvent, shouldRouteToInbox, shouldWake, WakeInbox } from './inbox.js';
 import type { InstallState } from './install.js';
 import { createIpcServer, type IpcFrame, type IpcRequest, type IpcResponse } from './ipc.js';
+import { freezeDenial } from './orchestrator/freeze.js';
+import { OllamaClient } from './orchestrator/ollama.js';
+import { Orchestrator } from './orchestrator/orchestrator.js';
 import { isPipe } from './runtime.js';
 import { summarise } from './summary.js';
 import { SymbolReader } from './symbol-reader.js';
@@ -127,6 +130,7 @@ export class LaptopDaemon {
       this.server.listen(this.state.socketPath, resolve);
     });
     await this.announceSession();
+    this.startOrchestrator();
     this.heartbeat = setInterval(
       () => this.transport.heartbeat(this.state.sessionId),
       SESSION_HEARTBEAT_MS,
@@ -659,12 +663,38 @@ export class LaptopDaemon {
       if (denied) return denied;
     }
     for (const path of paths) {
+      const frozen = freezeDenial(this.roomState, this.state.sessionId, path);
+      if (frozen) return frozen;
       const lease = this.leaseForPath(path);
       if (lease && lease.sessionId !== this.state.sessionId) {
         return `${path} is leased by ${lease.sessionId}. Negotiate through Agentigram before editing.`;
       }
     }
     return undefined;
+  }
+
+  /**
+   * The orchestrator debates collisions, so it lives where collisions are opened: the authority.
+   * On unless `AGENTIGRAM_ORCHESTRATOR=off`. It uses local Ollama when it answers and scripted
+   * turns when it does not (`AGENTIGRAM_ORCHESTRATOR=scripted` skips Ollama entirely).
+   */
+  private startOrchestrator(): void {
+    const mode = process.env.AGENTIGRAM_ORCHESTRATOR ?? 'on';
+    if (mode === 'off' || !(this.transport instanceof AuthorityTransport)) return;
+    const transport = this.transport;
+    const orchestrator = new Orchestrator(
+      {
+        roomId: this.state.roomId,
+        engineerId: this.state.engineerId,
+        state: () => this.roomState,
+        submit: (event) =>
+          transport.submitAsAuthority({ ...event, payload: redactPayload(event.payload) }),
+        log: this.log,
+      },
+      { ...(mode === 'scripted' ? {} : { llm: new OllamaClient() }) },
+    );
+    transport.onEvents((events) => orchestrator.handle(events));
+    orchestrator.resume();
   }
 
   private attachFencingToken(event: NewEvent): NewEvent {
