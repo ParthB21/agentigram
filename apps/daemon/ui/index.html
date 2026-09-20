@@ -170,33 +170,41 @@
       </aside>
     </main>
 
-    <nav class="control-dock" aria-label="Meeting controls">
-      <button class="dock-control" id="voiceMode" type="button" aria-label="Change voice mode">
-        <span class="control-icon"><svg aria-hidden="true"><use id="voiceIconUse" href="#icon-volume"></use></svg></span>
-        <span id="voiceModeLabel">Voice on</span>
+    <div class="dock-shell" id="dockShell">
+      <button class="dock-launcher" id="dockLauncher" type="button" aria-label="Show meeting controls" aria-expanded="false" aria-controls="controlDock">
+        <svg aria-hidden="true"><use href="#icon-more"></use></svg>
       </button>
-      <label class="volume-control" aria-label="Voice volume">
-        <svg aria-hidden="true"><use href="#icon-wave"></use></svg>
-        <input id="volume" type="range" min="0" max="1" value="0.8" step="0.05" />
-      </label>
-      <span class="dock-separator"></span>
-      <button class="dock-control active" id="captionsToggle" type="button" aria-pressed="true">
-        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-caption"></use></svg></span>
-        <span>Captions</span>
-      </button>
-      <button class="dock-control" id="layoutToggle" type="button">
-        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-layout"></use></svg></span>
-        <span>Focus</span>
-      </button>
-      <button class="dock-control" id="presentToggle" type="button">
-        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-present"></use></svg></span>
-        <span>Present</span>
-      </button>
-      <button class="dock-control details-toggle" id="detailsToggle" type="button">
-        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-more"></use></svg></span>
-        <span>Details</span>
-      </button>
-    </nav>
+      <nav class="control-dock" id="controlDock" aria-label="Meeting controls">
+        <button class="dock-close" id="dockClose" type="button" aria-label="Hide meeting controls">
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <button class="dock-control" id="voiceMode" type="button" aria-label="Change voice mode">
+          <span class="control-icon"><svg aria-hidden="true"><use id="voiceIconUse" href="#icon-volume"></use></svg></span>
+          <span id="voiceModeLabel">Voice on</span>
+        </button>
+        <label class="volume-control" aria-label="Voice volume">
+          <svg aria-hidden="true"><use href="#icon-wave"></use></svg>
+          <input id="volume" type="range" min="0" max="1" value="0.8" step="0.05" />
+        </label>
+        <span class="dock-separator"></span>
+        <button class="dock-control active" id="captionsToggle" type="button" aria-pressed="true">
+          <span class="control-icon"><svg aria-hidden="true"><use href="#icon-caption"></use></svg></span>
+          <span>Captions</span>
+        </button>
+        <button class="dock-control" id="layoutToggle" type="button">
+          <span class="control-icon"><svg aria-hidden="true"><use href="#icon-layout"></use></svg></span>
+          <span>Focus</span>
+        </button>
+        <button class="dock-control" id="presentToggle" type="button">
+          <span class="control-icon"><svg aria-hidden="true"><use href="#icon-present"></use></svg></span>
+          <span>Present</span>
+        </button>
+        <button class="dock-control details-toggle" id="detailsToggle" type="button">
+          <span class="control-icon"><svg aria-hidden="true"><use href="#icon-more"></use></svg></span>
+          <span>Details</span>
+        </button>
+      </nav>
+    </div>
 
     <div class="toast-region" id="toasts" aria-live="polite"></div>
 

@@ -21,6 +21,8 @@ import { SpeechQueue } from './speech.js';
 
 const MAX_ACTIVITY = 180;
 const MAX_DIALOGUE = 80;
+/** Kept out of the activity feed entirely. Matches `ACTIVITY_IGNORED` in the daemon. */
+const ACTIVITY_HIDDEN = new Set(['HEARTBEAT']);
 document.body.dataset.platform = window.agentigram.platform || 'unknown';
 const elements = Object.fromEntries(
   [
@@ -69,6 +71,9 @@ const elements = Object.fromEntries(
     'layoutToggle',
     'presentToggle',
     'detailsToggle',
+    'dockShell',
+    'dockLauncher',
+    'dockClose',
     'toasts',
     'confirmDialog',
     'confirmTitle',
@@ -135,6 +140,10 @@ function applyState(state) {
 function applyEvent(frame) {
   if (frame.seq != null && room.seen.has(frame.seq)) return;
   if (frame.seq != null) room.seen.add(frame.seq);
+  // Liveness, not work. Every agent beats every ten seconds, so an unfiltered feed is mostly
+  // heartbeats and the events worth reading scroll away between them. Presence still comes
+  // from the room state, which is where the online count and the idle rows are read from.
+  if (ACTIVITY_HIDDEN.has(frame.eventType)) return;
   room.frames.push(frame);
   if (room.frames.length > MAX_ACTIVITY) room.frames.splice(0, room.frames.length - MAX_ACTIVITY);
 
@@ -327,6 +336,11 @@ function bindControls() {
     renderAgents();
   });
   elements.presentToggle.addEventListener('click', togglePresentation);
+  elements.dockLauncher.addEventListener('click', () => setDockOpen(true));
+  elements.dockClose.addEventListener('click', () => setDockOpen(false));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && elements.dockShell.classList.contains('open')) setDockOpen(false);
+  });
   elements.detailsToggle.addEventListener('click', () => elements.inspector.classList.add('open'));
   elements.closeInspector.addEventListener('click', () =>
     elements.inspector.classList.remove('open'),
@@ -348,6 +362,20 @@ function selectInspectorTab(tab) {
   elements.conversationPanel.hidden = activity;
   elements.activityPanel.hidden = !activity;
   elements.conversationTab.parentElement.classList.toggle('activity-selected', activity);
+}
+
+/**
+ * Open or collapse the control dock.
+ *
+ * Collapsed, the controls are `visibility: hidden` and so are out of the tab order entirely;
+ * focus therefore has to be handed over explicitly, or closing the dock would strand the caret
+ * on an element nobody can see.
+ */
+function setDockOpen(open) {
+  elements.dockShell.classList.toggle('open', open);
+  elements.dockLauncher.setAttribute('aria-expanded', String(open));
+  if (open) elements.voiceMode.focus();
+  else elements.dockLauncher.focus();
 }
 
 async function togglePresentation() {
