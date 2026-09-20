@@ -49,7 +49,6 @@
         <path d="M10.3 4.2 2.7 17.5A1.7 1.7 0 0 0 4.2 20h15.6a1.7 1.7 0 0 0 1.5-2.5L13.7 4.2a2 2 0 0 0-3.4 0Z" />
         <path d="M12 9v4m0 3h.01" />
       </symbol>
-      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7" /></symbol>
       <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
     </svg>
 
@@ -159,13 +158,7 @@
             <div><del id="contractBefore"></del><span class="diff-arrow">&rarr;</span><ins id="contractAfter"></ins></div>
             <p id="contractConstraint"></p>
           </div>
-          <div class="negotiation-actions" id="negotiationActions">
-            <button class="glass-button positive" id="acceptCollision" type="button">
-              <svg aria-hidden="true"><use href="#icon-check"></use></svg> Accept resolution
-            </button>
-            <button class="glass-button" id="escalateCollision" type="button">Escalate</button>
-          </div>
-          <p class="action-note" id="actionNote"></p>
+          <p class="negotiation-status" id="negotiationStatus"></p>
         </section>
       </aside>
     </main>
@@ -207,18 +200,6 @@
     </div>
 
     <div class="toast-region" id="toasts" aria-live="polite"></div>
-
-    <dialog class="confirm-dialog" id="confirmDialog">
-      <form method="dialog">
-        <span class="dialog-icon"><svg aria-hidden="true"><use href="#icon-alert"></use></svg></span>
-        <h2 id="confirmTitle">Confirm action</h2>
-        <p id="confirmText"></p>
-        <div class="dialog-actions">
-          <button class="glass-button" type="submit" value="cancel">Cancel</button>
-          <button class="glass-button positive" id="confirmAction" type="submit" value="confirm">Confirm</button>
-        </div>
-      </form>
-    </dialog>
 
     <script type="module" src="renderer.js"></script>
   </body>

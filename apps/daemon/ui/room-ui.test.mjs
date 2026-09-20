@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   deriveAgentView,
@@ -87,6 +88,14 @@ test('speech attribution overrides the event actor for orchestrator narration', 
     'agentigram',
   );
   assert.equal(speakerForFrame({ sessionId: 'backend' }), 'backend');
+});
+
+test('desktop negotiations are read-only with no human decision bridge', () => {
+  const sources = ['index.html', 'renderer.js', 'preload.cjs', 'main.cjs']
+    .map((name) => readFileSync(new URL(name, import.meta.url), 'utf8'))
+    .join('\n');
+  assert.doesNotMatch(sources, /Accept resolution|Escalate|submitHumanAction|human-action/);
+  assert.match(sources, /negotiationStatus/);
 });
 
 test('speech queue deduplicates, tracks actual playback, and respects remote mute defaults', async () => {

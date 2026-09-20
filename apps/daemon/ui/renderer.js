@@ -60,9 +60,7 @@ const elements = Object.fromEntries(
     'contractBefore',
     'contractAfter',
     'contractConstraint',
-    'acceptCollision',
-    'escalateCollision',
-    'actionNote',
+    'negotiationStatus',
     'voiceMode',
     'voiceModeLabel',
     'voiceIconUse',
@@ -75,10 +73,6 @@ const elements = Object.fromEntries(
     'dockLauncher',
     'dockClose',
     'toasts',
-    'confirmDialog',
-    'confirmTitle',
-    'confirmText',
-    'confirmAction',
   ].map((id) => [id, document.getElementById(id)]),
 );
 
@@ -270,14 +264,9 @@ function renderCollision(state) {
     elements.contractConstraint.hidden = !elements.contractConstraint.textContent;
   }
 
-  const authority = state.mode === 'authority';
-  elements.acceptCollision.disabled = !authority;
-  elements.escalateCollision.disabled = !authority;
-  elements.actionNote.textContent = authority
-    ? negotiation?.state
-      ? `Negotiation is ${String(negotiation.state).toLowerCase()}.`
-      : 'The room authority can make a human decision.'
-    : 'Human decisions are available on the authority laptop.';
+  elements.negotiationStatus.textContent = negotiation?.state
+    ? `Negotiation is ${String(negotiation.state).toLowerCase()}.`
+    : 'Agents are coordinating a resolution.';
   renderAgents();
 }
 
@@ -351,8 +340,6 @@ function bindControls() {
   });
   elements.conversationTab.addEventListener('click', () => selectInspectorTab('conversation'));
   elements.activityTab.addEventListener('click', () => selectInspectorTab('activity'));
-  elements.acceptCollision.addEventListener('click', () => runCollisionAction('accept'));
-  elements.escalateCollision.addEventListener('click', () => runCollisionAction('escalate'));
 }
 
 function selectInspectorTab(tab) {
@@ -396,54 +383,6 @@ document.addEventListener('fullscreenchange', () => {
     elements.presentToggle.classList.remove('active');
   }
 });
-
-async function runCollisionAction(kind) {
-  const collision = room.currentCollision;
-  if (!collision) return;
-  const accepting = kind === 'accept';
-  const confirmed = await askConfirmation(
-    accepting ? 'Accept this resolution?' : 'Escalate to a human decision?',
-    accepting
-      ? 'This records a human acceptance for the active collision and allows the contract workflow to continue.'
-      : 'This pauses automatic negotiation and marks the collision as requiring human review.',
-    accepting ? 'Accept resolution' : 'Escalate',
-  );
-  if (!confirmed) return;
-
-  elements.acceptCollision.disabled = true;
-  elements.escalateCollision.disabled = true;
-  const action = accepting
-    ? { type: 'accept_escalation', collisionId: collision.collisionId }
-    : {
-        type: 'escalate',
-        collisionId: collision.collisionId,
-        reason: 'Human review requested from the Agentigram desktop room.',
-      };
-  try {
-    const result = await window.agentigram.submitHumanAction(action);
-    if (!result?.ok) throw new Error(result?.error || 'The daemon rejected the action');
-    showToast(accepting ? 'Resolution accepted.' : 'Collision escalated for human review.');
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : String(error), 'error');
-    elements.acceptCollision.disabled = room.state?.mode !== 'authority';
-    elements.escalateCollision.disabled = room.state?.mode !== 'authority';
-  }
-}
-
-function askConfirmation(title, text, actionLabel) {
-  elements.confirmTitle.textContent = title;
-  elements.confirmText.textContent = text;
-  elements.confirmAction.textContent = actionLabel;
-  elements.confirmDialog.returnValue = '';
-  elements.confirmDialog.showModal();
-  return new Promise((resolve) => {
-    elements.confirmDialog.addEventListener(
-      'close',
-      () => resolve(elements.confirmDialog.returnValue === 'confirm'),
-      { once: true },
-    );
-  });
-}
 
 function renderVoiceMode() {
   const mode = speech.mode;

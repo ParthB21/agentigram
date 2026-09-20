@@ -555,17 +555,6 @@
   min-height: 33px;
 }
 
-.glass-button.positive {
-  border-color: rgba(101, 225, 161, 0.25);
-  background: rgba(101, 225, 161, 0.1);
-  color: #b9f8d7;
-}
-
-.glass-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
 .dialogue-panel {
   padding: 4px 20px 16px;
 }
@@ -786,14 +775,8 @@
   font-size: 8px;
 }
 
-.negotiation-actions {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 7px;
+.negotiation-card > .negotiation-status {
   margin-top: 11px;
-}
-
-.negotiation-card > .action-note {
   min-height: 12px;
   color: var(--amber);
 }
