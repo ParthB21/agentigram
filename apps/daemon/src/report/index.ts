@@ -26,21 +26,15 @@ export function buildReport(events: Event[], generatedAt: string): SessionReport
 
   const caveats: string[] = [];
   if (agents.some((a) => a.model === 'unknown'))
-    caveats.push('Some sessions never reported a model and are grouped as "unknown".');
-  if (models.length < 2)
-    caveats.push('Only one model took part, so there is no model comparison in this session.');
+    caveats.push('Some sessions never reported a model ("unknown"); the host did not name it.');
+  if (models.length < 2) caveats.push('One model only, so nothing to compare.');
   if (duels.length === 0 && models.length >= 2)
     caveats.push(
-      'No paired duels ran. Models worked on different tasks, so task difficulty is not controlled; treat head-to-head as indicative only.',
+      'No paired duels: tasks differed, so difficulty is uncontrolled. Indicative only.',
     );
   const unverified = agents.filter((a) => a.outcome === 'unverified').length;
   if (unverified > 0)
-    caveats.push(
-      `${unverified} session(s) had no CI, contract or run verification, so they are left out of success rates rather than counted as failures.`,
-    );
-  caveats.push(
-    'Task categories come from keyword rules on the stated task (or the files touched), not from human confirmation.',
-  );
+    caveats.push(`${unverified} session(s) had no CI/contract/run check and are not scored.`);
 
   return {
     methodVersion: REPORT_METHOD_VERSION,

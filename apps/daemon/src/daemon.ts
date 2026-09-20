@@ -36,6 +36,7 @@ import { autonomousDenial } from './autonomous-guard.js';
 import { CursorStore } from './cursor-store.js';
 import { isFreshEvent, shouldRouteToInbox, shouldWake, WakeInbox } from './inbox.js';
 import type { InstallState } from './install.js';
+import { resolveHostModel } from './host-model.js';
 import { isHostPresenceNoise } from './host-presence.js';
 import { createIpcServer, type IpcFrame, type IpcRequest, type IpcResponse } from './ipc.js';
 import { freezeDenial } from './orchestrator/freeze.js';
@@ -101,6 +102,7 @@ export class LaptopDaemon {
   private stopPromise: Promise<void> | undefined;
   private runnerRegistered = false;
   private reportFromSeq = 0;
+  private modelReported = false;
   private managedAutonomy = false;
   /** Authority only: the room's work allocation. */
   private planner: Planner | undefined;
@@ -517,6 +519,7 @@ export class LaptopDaemon {
       }
     }
 
+    await this.identifyModel(input);
     const events = await this.adapter.normalize(input, {
       roomId: this.state.roomId,
       engineerId: this.state.engineerId,
@@ -547,6 +550,50 @@ export class LaptopDaemon {
     }
     if (contextOutput) return { ok: true, output: contextOutput };
     return { ok: true, output: {} };
+  }
+
+  /**
+   * Tell the room which model this laptop's agent is, the first time it can be read. The daemon
+   * announces before any host session exists, so the announcement says "unknown"; a hook later
+   * carries the transcript that names it. Same rule as `isHostPresenceNoise`: a SESSION_STARTED
+   * is only worth publishing to replace an unknown model, so this fires at most once.
+   */
+  private async identifyModel(input: HookInput): Promise<void> {
+    const session = this.roomState.sessions[this.state.sessionId];
+    if (this.modelReported || (session && session.model !== 'unknown')) {
+      this.modelReported = true;
+      return;
+    }
+    const model = resolveHostModel(this.state.host, input);
+    if (!model) return;
+    this.modelReported = true;
+    try {
+      await this.submit({
+        id: crypto.randomUUID(),
+        roomId: this.state.roomId,
+        actor: {
+          engineerId: this.state.engineerId,
+          sessionId: this.state.sessionId,
+          kind: 'agent',
+        },
+        source: 'hook',
+        payload: {
+          type: 'SESSION_STARTED',
+          sessionId: this.state.sessionId,
+          host: session?.host ?? this.state.host,
+          model,
+          branch: session?.branch ?? branch(input.cwd),
+          ...(session?.role ? { role: session.role } : {}),
+          ...(session?.task ? { task: session.task } : {}),
+        },
+      });
+    } catch (error) {
+      this.modelReported = false; // try again on the next hook
+      this.log.warn(
+        { err: error instanceof Error ? error.message : String(error) },
+        'could not report model',
+      );
+    }
   }
 
   private wrongRunnerSession(): IpcResponse {

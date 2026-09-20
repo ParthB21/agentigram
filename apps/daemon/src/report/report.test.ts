@@ -115,8 +115,9 @@ describe('session report', () => {
 
   it('renders markdown with the conflict story and caveats', () => {
     const md = renderMarkdown(buildReport(scenario(), '2026-09-20T13:00:00.000Z'));
-    expect(md).toContain('## Model comparison');
-    expect(md).toContain('Resolution: verified');
-    expect(md).toContain('## Caveats');
+    expect(md).toContain('## Models');
+    expect(md).toContain('· verified in');
+    expect(md).toContain('PROPOSAL → ACCEPT → contract pass');
+    expect(md).toContain('## Notes');
   });
 });

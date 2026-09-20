@@ -209,7 +209,6 @@ export function deriveFacts(events: Event[]): Derived {
           actor.leaseBlockedMs += Math.max(0, at - actor.blockedAt);
           actor.blockedAt = undefined;
         }
-        if (p.type === 'LEASE_GRANTED') note('lease', `granted ${p.symbols.length} symbol(s)`);
         break;
       case 'PROPOSAL':
         if (actor) actor.proposals += 1;
@@ -236,8 +235,12 @@ export function deriveFacts(events: Event[]): Derived {
         note('negotiation', `escalated to a human: ${clip(p.reason)}`);
         break;
       case 'MESSAGE':
-        if (p.collisionId) act(p.collisionId, 'MESSAGE', p.text);
-        note('message', `→ ${p.to}: ${clip(p.text)}`);
+        // Only negotiation chatter is worth keeping. The rest is mostly the orchestrator's
+        // repeated allocation broadcast, which buried everything else in the timeline.
+        if (p.collisionId) {
+          act(p.collisionId, 'MESSAGE', p.text);
+          note('message', `→ ${p.to}: ${clip(p.text)}`);
+        }
         break;
       case 'CONTRACT_COMPILED':
         if (p.collisionId) contractToCollision.set(p.contractId, p.collisionId);

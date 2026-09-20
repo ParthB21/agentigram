@@ -1,5 +1,6 @@
 import type { PosteriorCell, SessionReport } from './types.js';
 
+const TIMELINE_CAP = 30;
 const pct = (value: number): string => `${Math.round(value * 100)}%`;
 const rate = (cell: PosteriorCell | null): string =>
   cell ? `${pct(cell.median)} (${pct(cell.lower)}–${pct(cell.upper)})` : 'n/a';
@@ -8,150 +9,129 @@ const dur = (ms: number | null | undefined): string => {
   const s = Math.round(ms / 1000);
   return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`;
 };
-const cellText = (value: string): string => value.replace(/\|/g, '\\|');
 const table = (head: string[], rows: string[][]): string[] => [
   `| ${head.join(' | ')} |`,
   `| ${head.map(() => '---').join(' | ')} |`,
-  ...rows.map((row) => `| ${row.map(cellText).join(' | ')} |`),
+  ...rows.map((row) => `| ${row.map((cell) => cell.replace(/\|/g, '\\|')).join(' | ')} |`),
   '',
 ];
 
-/** The human-readable end-of-session log. The JSON beside it is the source; this is a view of it. */
+/** The short human view of a report. The JSON beside it has everything; this is what fits on a screen. */
 export function renderMarkdown(report: SessionReport): string {
   const out: string[] = [];
-  const label = new Map(report.agents.map((a) => [a.sessionId, `${a.sessionId} (${a.model})`]));
-  const who = (id?: string): string => (id ? (label.get(id) ?? id) : 'room');
+  const name = new Map(report.agents.map((a) => [a.sessionId, `${a.sessionId} (${a.model})`]));
+  const who = (id?: string): string => (id ? (name.get(id) ?? id) : 'room');
 
-  out.push(`# Session report — ${report.roomId}`, '');
   out.push(
-    `Generated ${report.generatedAt} · ${report.eventCount} events (seq ${report.window.firstSeq}–${report.window.lastSeq}) · ${dur(report.window.durationMs)} · method v${report.methodVersion}`,
-    `Event log SHA-256: \`${report.eventsSha256}\``,
+    `# Session report — ${report.roomId}`,
+    `${dur(report.window.durationMs)} · ${report.eventCount} events · log \`${report.eventsSha256.slice(0, 12)}\` (full hash in the JSON)`,
     '',
-  );
-
-  out.push('## Model comparison', '');
-  out.push(
+    '## Models',
+    '',
     ...table(
       [
         'Model',
         'Sessions',
         'Pass / fail / unverified',
-        'Success rate (80%)',
-        'Conflicts caused',
-        'Verified',
-        'Escalated',
-        'Lease denials',
-        'Cost',
+        'Success (80%)',
+        'Conflicts caused / verified / escalated',
       ],
       report.models.map((m) => [
         m.model,
         String(m.sessions),
         `${m.passes} / ${m.fails} / ${m.unverified}`,
         rate(m.successRate),
-        String(m.conflictsCaused),
-        String(m.conflictsVerified),
-        String(m.conflictsEscalated),
-        String(m.leaseDenials),
-        m.costUsd > 0 ? `$${m.costUsd.toFixed(2)}` : '–',
+        `${m.conflictsCaused} / ${m.conflictsVerified} / ${m.conflictsEscalated}`,
       ]),
     ),
   );
 
-  out.push('## By category', '');
-  const cats = report.models.flatMap((m) =>
-    m.byCategory.map((c) => [
-      c.category,
-      m.model,
-      `${c.passes}/${c.scored}`,
-      rate(c.successRate),
-      dur(c.medianDurationMs),
-      c.unverified > 0 ? String(c.unverified) : '–',
-    ]),
+  const categories = report.models.flatMap((m) =>
+    m.byCategory
+      .filter((c) => c.scored > 0)
+      .map((c) => [
+        c.category,
+        m.model,
+        `${c.passes}/${c.scored}`,
+        rate(c.successRate),
+        dur(c.medianDurationMs),
+      ]),
   );
-  out.push(
-    ...table(
-      ['Category', 'Model', 'Passed', 'Success rate (80%)', 'Median time to pass', 'Unverified'],
-      cats.sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
-    ),
-  );
-
-  if (report.headToHead.length > 0) {
-    out.push('## Head to head', '');
+  if (categories.length > 0) {
     out.push(
+      '## By category',
+      '',
+      ...table(['Category', 'Model', 'Passed', 'Success (80%)', 'Median time'], categories),
+    );
+  }
+
+  // The overall row always; a category row only when it produced a verdict.
+  const versus = report.headToHead.filter((h) => h.category === 'ALL' || h.winner);
+  if (versus.length > 0) {
+    out.push(
+      '## Head to head',
+      '',
       ...table(
-        ['Category', 'A', 'B', 'n(A) / n(B)', 'P(A > B)', 'Verdict'],
-        report.headToHead.map((h) => [
+        ['Category', 'A vs B', 'n', 'P(A > B)', 'Verdict'],
+        versus.map((h) => [
           h.category,
-          h.a,
-          h.b,
+          `${h.a} vs ${h.b}`,
           `${h.nA} / ${h.nB}`,
           h.probabilityAOverB === null ? 'n/a' : pct(h.probabilityAOverB),
-          h.winner ?? `not enough data (needs n ≥ 5 each and P ≥ 90%)`,
+          h.winner ?? 'not enough data (needs n ≥ 5 each, P ≥ 90%)',
         ]),
       ),
     );
   }
   if (report.duels > 0) {
-    out.push(`## Paired duels (${report.duels})`, '');
+    const ratings = Object.entries(report.duelRatings).sort((a, b) => b[1] - a[1]);
     out.push(
-      ...table(
-        ['Model', 'Bradley–Terry strength'],
-        Object.entries(report.duelRatings)
-          .sort((a, b) => b[1] - a[1])
-          .map(([model, s]) => [model, s.toFixed(2)]),
-      ),
+      `## Duels (${report.duels})`,
+      '',
+      ...ratings.map(([model, s]) => `- ${model}: ${s.toFixed(2)}`),
+      '',
     );
   }
 
-  out.push('## Who did what', '');
   out.push(
+    '## Agents',
+    '',
     ...table(
-      [
-        'Agent',
-        'Category',
-        'Task',
-        'Files written',
-        'Collisions caused / hit',
-        'Blocked',
-        'Negotiation (prop / counter / accept / esc)',
-        'Outcome',
-      ],
+      ['Agent', 'Task', 'Category', 'Writes', 'Outcome'],
       report.agents.map((a) => [
         who(a.sessionId),
-        a.category,
         a.task ?? '–',
+        a.category,
         String(a.filesWritten.length),
-        `${a.collisionsCaused} / ${a.collisionsAffected}`,
-        dur(a.leaseBlockedMs),
-        `${a.proposals} / ${a.counters} / ${a.accepts} / ${a.escalations}`,
         a.outcome,
       ]),
     ),
+    '## Conflicts',
+    '',
   );
-
-  out.push(`## Conflicts (${report.conflicts.length})`, '');
-  if (report.conflicts.length === 0) out.push('None detected.', '');
+  if (report.conflicts.length === 0) out.push('None.', '');
   for (const c of report.conflicts) {
+    const steps = [
+      ...c.actions.filter((a) => a.kind !== 'MESSAGE').map((a) => a.kind),
+      ...(c.contractResult ? [`contract ${c.contractResult}`] : []),
+    ];
     out.push(
-      `### ${c.tier} · ${c.symbols.slice(0, 2).join(', ')}${c.symbols.length > 2 ? ' …' : ''}`,
-      `Opened at seq ${c.openedSeq} (${c.openedAt}) by ${who(c.writer)}, affecting ${c.affected.map(who).join(', ') || 'no one yet'}.`,
-      `**Resolution: ${c.resolution}**${c.timeToResolutionMs !== undefined ? ` in ${dur(c.timeToResolutionMs)}` : ''}${c.contractResult ? ` · contract ${c.contractResult}` : ''}`,
-      '',
+      `- **${c.tier}** ${c.symbols[0] ?? 'file'} — ${who(c.writer)} vs ${c.affected.map(who).join(', ') || '?'} · ${c.resolution}${c.timeToResolutionMs !== undefined ? ` in ${dur(c.timeToResolutionMs)}` : ''}${steps.length > 0 ? ` (${steps.join(' → ')})` : ''}`,
     );
-    for (const a of c.actions) {
-      out.push(`- #${a.seq} ${who(a.by)} ${a.kind}${a.note ? `: ${a.note}` : ''}`);
+  }
+  out.push('');
+
+  if (report.timeline.length > 0) {
+    const shown = report.timeline.slice(0, TIMELINE_CAP);
+    out.push('## Timeline', '');
+    for (const t of shown) out.push(`- ${t.ts.slice(11, 19)} ${who(t.session)} — ${t.text}`);
+    if (report.timeline.length > shown.length) {
+      out.push(`- … ${report.timeline.length - shown.length} more in the JSON`);
     }
     out.push('');
   }
 
-  out.push('## Timeline', '');
-  for (const t of report.timeline) {
-    out.push(`- \`#${t.seq}\` ${t.ts.slice(11, 19)} **${who(t.session)}** ${t.kind}: ${t.text}`);
-  }
-  out.push('');
-
-  out.push('## Caveats', '');
-  for (const caveat of report.caveats) out.push(`- ${caveat}`);
-  out.push('');
+  if (report.caveats.length > 0)
+    out.push('## Notes', '', ...report.caveats.map((c) => `- ${c}`), '');
   return out.join('\n');
 }
