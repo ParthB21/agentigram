@@ -23,8 +23,8 @@ agg leave
 ## Desktop meeting room
 
 `agg ui` opens a packaged-app-style Electron room rather than a browser page. It renders each coding
-agent as a stable participant tile, animates live activity and collision state, and provides dialogue,
-negotiation and human-decision controls in a glass meeting interface. System speech synthesis is
+agent as a stable participant tile, animates live activity and collision state, and provides dialogue
+and read-only negotiation details in a glass meeting interface. System speech synthesis is
 queued by priority; speaking indicators and captions follow the audio engine's real start, boundary
 and end events instead of guessing from message arrival.
 

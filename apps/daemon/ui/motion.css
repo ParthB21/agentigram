@@ -247,13 +247,13 @@
   font-size: 11px;
 }
 
-.presenting .control-dock {
+.presenting .dock-shell {
   opacity: 0.22;
   transition: opacity 200ms ease;
 }
 
-.presenting .control-dock:hover,
-.presenting .control-dock:focus-within {
+.presenting .dock-shell:hover,
+.presenting .dock-shell:focus-within {
   opacity: 1;
 }
 
@@ -342,15 +342,16 @@
   .stage-heading h1 {
     font-size: 17px;
   }
-  .control-dock {
+  .dock-shell {
     bottom: 10px;
+  }
+  .control-dock {
     height: 56px;
   }
   .dock-control {
     height: 44px;
   }
   .agent-avatar-wrap {
-    width: 66px;
     height: 66px;
     margin-bottom: 8px;
   }
@@ -385,6 +386,8 @@
   .dock-control,
   .inspector,
   .control-dock,
+  .dock-launcher,
+  .workspace,
   .segment-indicator {
     transition: none;
   }
@@ -397,6 +400,7 @@ body.reduce-transparency .ambient-orb {
 body.reduce-transparency .meeting-surface,
 body.reduce-transparency .inspector,
 body.reduce-transparency .control-dock,
+body.reduce-transparency .dock-launcher,
 body.reduce-transparency .collision-banner,
 body.reduce-transparency .live-caption {
   background: #171b27;

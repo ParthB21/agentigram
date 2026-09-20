@@ -21,6 +21,8 @@ import { SpeechQueue } from './speech.js';
 
 const MAX_ACTIVITY = 180;
 const MAX_DIALOGUE = 80;
+/** Kept out of the activity feed entirely. Matches `ACTIVITY_IGNORED` in the daemon. */
+const ACTIVITY_HIDDEN = new Set(['HEARTBEAT']);
 document.body.dataset.platform = window.agentigram.platform || 'unknown';
 const elements = Object.fromEntries(
   [
@@ -58,9 +60,7 @@ const elements = Object.fromEntries(
     'contractBefore',
     'contractAfter',
     'contractConstraint',
-    'acceptCollision',
-    'escalateCollision',
-    'actionNote',
+    'negotiationStatus',
     'voiceMode',
     'voiceModeLabel',
     'voiceIconUse',
@@ -69,11 +69,10 @@ const elements = Object.fromEntries(
     'layoutToggle',
     'presentToggle',
     'detailsToggle',
+    'dockShell',
+    'dockLauncher',
+    'dockClose',
     'toasts',
-    'confirmDialog',
-    'confirmTitle',
-    'confirmText',
-    'confirmAction',
   ].map((id) => [id, document.getElementById(id)]),
 );
 
@@ -135,6 +134,10 @@ function applyState(state) {
 function applyEvent(frame) {
   if (frame.seq != null && room.seen.has(frame.seq)) return;
   if (frame.seq != null) room.seen.add(frame.seq);
+  // Liveness, not work. Every agent beats every ten seconds, so an unfiltered feed is mostly
+  // heartbeats and the events worth reading scroll away between them. Presence still comes
+  // from the room state, which is where the online count and the idle rows are read from.
+  if (ACTIVITY_HIDDEN.has(frame.eventType)) return;
   room.frames.push(frame);
   if (room.frames.length > MAX_ACTIVITY) room.frames.splice(0, room.frames.length - MAX_ACTIVITY);
 
@@ -261,14 +264,9 @@ function renderCollision(state) {
     elements.contractConstraint.hidden = !elements.contractConstraint.textContent;
   }
 
-  const authority = state.mode === 'authority';
-  elements.acceptCollision.disabled = !authority;
-  elements.escalateCollision.disabled = !authority;
-  elements.actionNote.textContent = authority
-    ? negotiation?.state
-      ? `Negotiation is ${String(negotiation.state).toLowerCase()}.`
-      : 'The room authority can make a human decision.'
-    : 'Human decisions are available on the authority laptop.';
+  elements.negotiationStatus.textContent = negotiation?.state
+    ? `Negotiation is ${String(negotiation.state).toLowerCase()}.`
+    : 'Agents are coordinating a resolution.';
   renderAgents();
 }
 
@@ -327,6 +325,11 @@ function bindControls() {
     renderAgents();
   });
   elements.presentToggle.addEventListener('click', togglePresentation);
+  elements.dockLauncher.addEventListener('click', () => setDockOpen(true));
+  elements.dockClose.addEventListener('click', () => setDockOpen(false));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && elements.dockShell.classList.contains('open')) setDockOpen(false);
+  });
   elements.detailsToggle.addEventListener('click', () => elements.inspector.classList.add('open'));
   elements.closeInspector.addEventListener('click', () =>
     elements.inspector.classList.remove('open'),
@@ -337,8 +340,6 @@ function bindControls() {
   });
   elements.conversationTab.addEventListener('click', () => selectInspectorTab('conversation'));
   elements.activityTab.addEventListener('click', () => selectInspectorTab('activity'));
-  elements.acceptCollision.addEventListener('click', () => runCollisionAction('accept'));
-  elements.escalateCollision.addEventListener('click', () => runCollisionAction('escalate'));
 }
 
 function selectInspectorTab(tab) {
@@ -348,6 +349,20 @@ function selectInspectorTab(tab) {
   elements.conversationPanel.hidden = activity;
   elements.activityPanel.hidden = !activity;
   elements.conversationTab.parentElement.classList.toggle('activity-selected', activity);
+}
+
+/**
+ * Open or collapse the control dock.
+ *
+ * Collapsed, the controls are `visibility: hidden` and so are out of the tab order entirely;
+ * focus therefore has to be handed over explicitly, or closing the dock would strand the caret
+ * on an element nobody can see.
+ */
+function setDockOpen(open) {
+  elements.dockShell.classList.toggle('open', open);
+  elements.dockLauncher.setAttribute('aria-expanded', String(open));
+  if (open) elements.voiceMode.focus();
+  else elements.dockLauncher.focus();
 }
 
 async function togglePresentation() {
@@ -368,54 +383,6 @@ document.addEventListener('fullscreenchange', () => {
     elements.presentToggle.classList.remove('active');
   }
 });
-
-async function runCollisionAction(kind) {
-  const collision = room.currentCollision;
-  if (!collision) return;
-  const accepting = kind === 'accept';
-  const confirmed = await askConfirmation(
-    accepting ? 'Accept this resolution?' : 'Escalate to a human decision?',
-    accepting
-      ? 'This records a human acceptance for the active collision and allows the contract workflow to continue.'
-      : 'This pauses automatic negotiation and marks the collision as requiring human review.',
-    accepting ? 'Accept resolution' : 'Escalate',
-  );
-  if (!confirmed) return;
-
-  elements.acceptCollision.disabled = true;
-  elements.escalateCollision.disabled = true;
-  const action = accepting
-    ? { type: 'accept_escalation', collisionId: collision.collisionId }
-    : {
-        type: 'escalate',
-        collisionId: collision.collisionId,
-        reason: 'Human review requested from the Agentigram desktop room.',
-      };
-  try {
-    const result = await window.agentigram.submitHumanAction(action);
-    if (!result?.ok) throw new Error(result?.error || 'The daemon rejected the action');
-    showToast(accepting ? 'Resolution accepted.' : 'Collision escalated for human review.');
-  } catch (error) {
-    showToast(error instanceof Error ? error.message : String(error), 'error');
-    elements.acceptCollision.disabled = room.state?.mode !== 'authority';
-    elements.escalateCollision.disabled = room.state?.mode !== 'authority';
-  }
-}
-
-function askConfirmation(title, text, actionLabel) {
-  elements.confirmTitle.textContent = title;
-  elements.confirmText.textContent = text;
-  elements.confirmAction.textContent = actionLabel;
-  elements.confirmDialog.returnValue = '';
-  elements.confirmDialog.showModal();
-  return new Promise((resolve) => {
-    elements.confirmDialog.addEventListener(
-      'close',
-      () => resolve(elements.confirmDialog.returnValue === 'confirm'),
-      { once: true },
-    );
-  });
-}
 
 function renderVoiceMode() {
   const mode = speech.mode;

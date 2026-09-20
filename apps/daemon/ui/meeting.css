@@ -101,6 +101,9 @@
   align-items: center;
   justify-content: center;
   flex-direction: column;
+  /* Top padding clears the absolutely positioned status row; the rest keeps the avatar's
+     halo, which bleeds 13px past its wrapper, inside the tile's rounded corners. */
+  padding: 46px 14px 16px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.09);
   border-radius: 21px;
@@ -212,13 +215,31 @@
   height: 14px;
 }
 
+/*
+ * The avatar is the one part of a tile that can give ground.
+ *
+ * Its height is a preference, not a fixed size: `flex: 0 1 auto` lets it shrink when four tiles
+ * split the stage into short boxes, and `aspect-ratio` keeps it a circle as it does. The label,
+ * model and task lines below refuse to shrink, so the avatar yields first and the tile stays
+ * whole instead of clipping its own contents against `overflow: hidden`.
+ */
 .agent-avatar-wrap {
   position: relative;
   display: grid;
-  width: clamp(72px, 8vw, 104px);
-  height: clamp(72px, 8vw, 104px);
+  width: auto;
+  height: clamp(44px, 8vw, 104px);
+  flex: 0 1 auto;
+  aspect-ratio: 1;
+  min-height: 40px;
   place-items: center;
   margin-bottom: 13px;
+  container-type: size;
+}
+
+.agent-name,
+.agent-model,
+.agent-task {
+  flex: 0 0 auto;
 }
 
 .agent-halo,
@@ -266,7 +287,8 @@
     inset 0 1px 1px rgba(255, 255, 255, 0.2),
     0 13px 35px rgba(0, 0, 0, 0.28);
   color: white;
-  font-size: clamp(19px, 2.5vw, 30px);
+  /* Sized against the circle rather than the viewport, so initials shrink with it. */
+  font-size: clamp(13px, 34cqh, 30px);
   font-weight: 620;
   letter-spacing: -0.04em;
 }
@@ -533,17 +555,6 @@
   min-height: 33px;
 }
 
-.glass-button.positive {
-  border-color: rgba(101, 225, 161, 0.25);
-  background: rgba(101, 225, 161, 0.1);
-  color: #b9f8d7;
-}
-
-.glass-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.42;
-}
-
 .dialogue-panel {
   padding: 4px 20px 16px;
 }
@@ -764,14 +775,8 @@
   font-size: 8px;
 }
 
-.negotiation-actions {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 7px;
+.negotiation-card > .negotiation-status {
   margin-top: 11px;
-}
-
-.negotiation-card > .action-note {
   min-height: 12px;
   color: var(--amber);
 }

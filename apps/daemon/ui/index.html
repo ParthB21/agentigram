@@ -49,7 +49,6 @@
         <path d="M10.3 4.2 2.7 17.5A1.7 1.7 0 0 0 4.2 20h15.6a1.7 1.7 0 0 0 1.5-2.5L13.7 4.2a2 2 0 0 0-3.4 0Z" />
         <path d="M12 9v4m0 3h.01" />
       </symbol>
-      <symbol id="icon-check" viewBox="0 0 24 24"><path d="m5 12 4.5 4.5L19 7" /></symbol>
       <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
     </svg>
 
@@ -159,58 +158,48 @@
             <div><del id="contractBefore"></del><span class="diff-arrow">&rarr;</span><ins id="contractAfter"></ins></div>
             <p id="contractConstraint"></p>
           </div>
-          <div class="negotiation-actions" id="negotiationActions">
-            <button class="glass-button positive" id="acceptCollision" type="button">
-              <svg aria-hidden="true"><use href="#icon-check"></use></svg> Accept resolution
-            </button>
-            <button class="glass-button" id="escalateCollision" type="button">Escalate</button>
-          </div>
-          <p class="action-note" id="actionNote"></p>
+          <p class="negotiation-status" id="negotiationStatus"></p>
         </section>
       </aside>
     </main>
 
-    <nav class="control-dock" aria-label="Meeting controls">
-      <button class="dock-control" id="voiceMode" type="button" aria-label="Change voice mode">
-        <span class="control-icon"><svg aria-hidden="true"><use id="voiceIconUse" href="#icon-volume"></use></svg></span>
-        <span id="voiceModeLabel">Voice on</span>
+    <div class="dock-shell" id="dockShell">
+      <button class="dock-launcher" id="dockLauncher" type="button" aria-label="Show meeting controls" aria-expanded="false" aria-controls="controlDock">
+        <svg aria-hidden="true"><use href="#icon-more"></use></svg>
       </button>
-      <label class="volume-control" aria-label="Voice volume">
-        <svg aria-hidden="true"><use href="#icon-wave"></use></svg>
-        <input id="volume" type="range" min="0" max="1" value="0.8" step="0.05" />
-      </label>
-      <span class="dock-separator"></span>
-      <button class="dock-control active" id="captionsToggle" type="button" aria-pressed="true">
-        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-caption"></use></svg></span>
-        <span>Captions</span>
-      </button>
-      <button class="dock-control" id="layoutToggle" type="button">
-        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-layout"></use></svg></span>
-        <span>Focus</span>
-      </button>
-      <button class="dock-control" id="presentToggle" type="button">
-        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-present"></use></svg></span>
-        <span>Present</span>
-      </button>
-      <button class="dock-control details-toggle" id="detailsToggle" type="button">
-        <span class="control-icon"><svg aria-hidden="true"><use href="#icon-more"></use></svg></span>
-        <span>Details</span>
-      </button>
-    </nav>
+      <nav class="control-dock" id="controlDock" aria-label="Meeting controls">
+        <button class="dock-close" id="dockClose" type="button" aria-label="Hide meeting controls">
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <button class="dock-control" id="voiceMode" type="button" aria-label="Change voice mode">
+          <span class="control-icon"><svg aria-hidden="true"><use id="voiceIconUse" href="#icon-volume"></use></svg></span>
+          <span id="voiceModeLabel">Voice on</span>
+        </button>
+        <label class="volume-control" aria-label="Voice volume">
+          <svg aria-hidden="true"><use href="#icon-wave"></use></svg>
+          <input id="volume" type="range" min="0" max="1" value="0.8" step="0.05" />
+        </label>
+        <span class="dock-separator"></span>
+        <button class="dock-control active" id="captionsToggle" type="button" aria-pressed="true">
+          <span class="control-icon"><svg aria-hidden="true"><use href="#icon-caption"></use></svg></span>
+          <span>Captions</span>
+        </button>
+        <button class="dock-control" id="layoutToggle" type="button">
+          <span class="control-icon"><svg aria-hidden="true"><use href="#icon-layout"></use></svg></span>
+          <span>Focus</span>
+        </button>
+        <button class="dock-control" id="presentToggle" type="button">
+          <span class="control-icon"><svg aria-hidden="true"><use href="#icon-present"></use></svg></span>
+          <span>Present</span>
+        </button>
+        <button class="dock-control details-toggle" id="detailsToggle" type="button">
+          <span class="control-icon"><svg aria-hidden="true"><use href="#icon-more"></use></svg></span>
+          <span>Details</span>
+        </button>
+      </nav>
+    </div>
 
     <div class="toast-region" id="toasts" aria-live="polite"></div>
-
-    <dialog class="confirm-dialog" id="confirmDialog">
-      <form method="dialog">
-        <span class="dialog-icon"><svg aria-hidden="true"><use href="#icon-alert"></use></svg></span>
-        <h2 id="confirmTitle">Confirm action</h2>
-        <p id="confirmText"></p>
-        <div class="dialog-actions">
-          <button class="glass-button" type="submit" value="cancel">Cancel</button>
-          <button class="glass-button positive" id="confirmAction" type="submit" value="confirm">Confirm</button>
-        </div>
-      </form>
-    </dialog>
 
     <script type="module" src="renderer.js"></script>
   </body>

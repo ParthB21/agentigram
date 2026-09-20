@@ -247,11 +247,6 @@ function createWindow() {
 ipcMain.handle('agentigram:get-status', (event) =>
   trusted(event) ? status() : Promise.reject(new Error('untrusted renderer')),
 );
-ipcMain.handle('agentigram:human-action', (event, action) =>
-  trusted(event)
-    ? requestDaemon({ type: 'human', action })
-    : Promise.reject(new Error('untrusted renderer')),
-);
 ipcMain.handle('agentigram:set-voice', (event, settings) => {
   if (!trusted(event)) throw new Error('untrusted renderer');
   if (
