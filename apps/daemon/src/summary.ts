@@ -14,6 +14,10 @@ export function summarise(e: Event): string {
       return `#${e.seq} ${who} INTENT ${p.task}`;
     case 'MESSAGE':
       return `#${e.seq} ${who} MESSAGE -> ${p.to}`;
+    // Naming the tool is what tells you whether a host's reads are being
+    // recognised: an unrecognised read shows up here as a bare TOOL_CALL.
+    case 'TOOL_CALL':
+      return `#${e.seq} ${who} TOOL_CALL ${p.tool}${p.paths?.length ? ` ${p.paths.join(', ')}` : ''}`;
     default:
       return `#${e.seq} ${who} ${p.type}`;
   }

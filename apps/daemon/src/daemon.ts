@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { appendFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type AgentAdapter,
@@ -252,6 +252,19 @@ export class LaptopDaemon {
     if (request.type === 'tool')
       return this.handleTool(request.name, request.args, request.sessionId);
 
+    // Set AGENTIGRAM_HOOK_LOG=<file> to capture what a host actually sends.
+    // Hook payload shapes differ between hosts and move between releases, and
+    // guessing at one is how an adapter ends up silently dropping reads.
+    if (process.env.AGENTIGRAM_HOOK_LOG) {
+      try {
+        appendFileSync(
+          process.env.AGENTIGRAM_HOOK_LOG,
+          `${JSON.stringify({ host: this.state.host, event: request.event, input: request.input })}\n`,
+        );
+      } catch {
+        // Diagnostics must never break a hook.
+      }
+    }
     const input = this.parseHook(request.input);
     if (input.hook_event_name !== request.event) {
       return { ok: false, error: 'hook event does not match hook payload' };
