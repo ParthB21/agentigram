@@ -47,6 +47,7 @@ import { summarise } from './summary.js';
 import { SymbolReader } from './symbol-reader.js';
 import { WorktreeWatcher } from './watcher.js';
 import { SpeechNarrator } from './speech-narration.js';
+import { buildReport, writeReport } from './report/index.js';
 
 const SESSION_HEARTBEAT_MS = 10_000;
 /**
@@ -99,6 +100,7 @@ export class LaptopDaemon {
   private sessionAnnouncement: Promise<void> | undefined;
   private stopPromise: Promise<void> | undefined;
   private runnerRegistered = false;
+  private reportFromSeq = 0;
   private managedAutonomy = false;
   /** Authority only: the room's work allocation. */
   private planner: Planner | undefined;
@@ -145,6 +147,10 @@ export class LaptopDaemon {
 
   async start(): Promise<void> {
     await this.transport.start();
+    // The report covers this run only; earlier runs of the same room keep their own.
+    if (this.transport instanceof AuthorityTransport) {
+      this.reportFromSeq = this.transport.eventsAfter(0).at(-1)?.seq ?? 0;
+    }
     await new Promise<void>((resolve, reject) => {
       this.server.once('error', reject);
       this.server.listen(this.state.socketPath, resolve);
@@ -219,12 +225,32 @@ export class LaptopDaemon {
     this.planner?.stop();
     for (const watcher of this.watchers.values()) await watcher.stop();
     await this.announceSessionEnded();
+    this.writeSessionReport();
     await this.transport.stop();
     await new Promise<void>((resolve) => this.server.close(() => resolve()));
     // A Windows named pipe has no directory entry to remove; `unlink` on one
     // throws EINVAL, which `force` does not suppress. Closing the server is
     // what releases it.
     if (!isPipe(this.state.socketPath)) rmSync(this.state.socketPath, { force: true });
+  }
+
+  /**
+   * Only the authority holds the whole log, so only it writes the report. A
+   * failure here must never block shutdown, but it is logged, not swallowed.
+   */
+  private writeSessionReport(): void {
+    if (!(this.transport instanceof AuthorityTransport)) return;
+    try {
+      const events = this.transport.eventsAfter(this.reportFromSeq);
+      if (events.length === 0) return;
+      const paths = writeReport(buildReport(events, new Date().toISOString()));
+      this.log.info({ report: paths.markdown, json: paths.json }, 'session report written');
+    } catch (error) {
+      this.log.error(
+        { err: error instanceof Error ? error.message : String(error) },
+        'could not write session report',
+      );
+    }
   }
 
   private async announceSessionEnded(): Promise<void> {

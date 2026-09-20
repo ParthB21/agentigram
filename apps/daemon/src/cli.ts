@@ -1,10 +1,11 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { accessSync, chmodSync, constants, existsSync, statSync } from 'node:fs';
+import { accessSync, chmodSync, constants, existsSync, readFileSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCapability, decodeInvite } from '@agentigram/p2p';
+import { EventSchema } from '@agentigram/protocol';
 import { Command } from 'commander';
 import pino from 'pino';
 import { CursorStore } from './cursor-store.js';
@@ -19,6 +20,7 @@ import {
 } from './install.js';
 import { DEFAULT_HOOK_TIMEOUT_MS, PRE_TOOL_TIMEOUT_MS, requestIpc } from './ipc.js';
 import { runMcpServer } from './mcp-server.js';
+import { buildReport, latestReport, renderMarkdown, writeReport } from './report/index.js';
 import { RoomClient } from './room-client.js';
 import { IpcRunnerClient } from './runner/client.js';
 import { createAdapter } from './runner/hosts.js';
@@ -451,6 +453,33 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
       }
       uninstall(state.root);
       console.log(`Left ${state.roomId}. Local configuration restored.`);
+      const report = latestReport(state.roomId);
+      if (report) console.log(`Session report: ${report}`);
+    });
+
+  program
+    .command('report')
+    .description('Score a room from its event log: who did what, conflicts, model comparison.')
+    .option('--root <path>', 'repository root', defaultRoot)
+    .option('--events <file>', 'read this events.jsonl instead of the room in --root')
+    .option('--json', 'print the JSON report instead of markdown')
+    .action((options: { root: string; events?: string; json?: boolean }) => {
+      const file =
+        options.events ??
+        join(requiredState(resolveRoot(options.root)).p2pStorage, 'authority-state', 'events.jsonl');
+      if (!existsSync(file)) {
+        throw new Error(
+          `No event log at ${file}. Only the authority laptop keeps one; run this there, or pass --events.`,
+        );
+      }
+      const events = readFileSync(file, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((line) => EventSchema.parse(JSON.parse(line)));
+      const report = buildReport(events, new Date().toISOString());
+      const paths = writeReport(report);
+      console.log(options.json ? JSON.stringify(report, null, 2) : renderMarkdown(report));
+      console.error(`Saved ${paths.markdown}\n      ${paths.json}`);
     });
 
   program

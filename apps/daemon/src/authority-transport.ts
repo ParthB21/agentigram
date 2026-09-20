@@ -51,6 +51,11 @@ export class AuthorityTransport implements RoomTransport {
     return this.server.readCoreLog(limit);
   }
 
+  /** Every event the room has agreed on, for the end-of-session report. */
+  eventsAfter(seq: number): Event[] {
+    return this.core.eventsAfter(seq);
+  }
+
   get inviteUri(): string | undefined {
     return this.inviteValue ? encodeInvite(this.inviteValue) : undefined;
   }
