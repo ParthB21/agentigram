@@ -154,3 +154,14 @@ it — it is Prettier-formatted, per the Holepunch config the boilerplate ships.
 …). OTA updates need a real Pear key: run `pear touch`, paste it into `package.json`'s `upgrade`
 field, and the updater arms itself. Until then the app runs with updates disabled and says so.
 Staged updates are never auto-applied — <kbd>ctrl+r</kbd> installs, so nothing swaps out mid-negotiation.
+
+## Speech (QVAC Parler TTS)
+
+`lib/speech/` is a headless speech engine; nothing in the UI uses it yet.
+
+- Model `TTS_MINI_V1_EN_PARLER_TTS_Q8_0` (~1.1 GB, downloaded through the QVAC registry on first use) via `@qvac/tts-ggml@0.7.5` and the existing `@qvac/inference@0.18.2` `tts-ggml` plugin.
+- Runs in its own worker (`workers/tts.js`). Metal on Apple Silicon, one retry on CPU.
+- Output rate is pinned to 44100 Hz in the model config (the SDK client does not report it); PCM is wrapped as a temp WAV and played with `/usr/bin/afplay`.
+- Voices come from hashing the session id into a Parler speaker description, so they are stable across restarts.
+- Settings persist to `<storage>/speech.json`: volume 0.8, local agent on, remote agents muted.
+- Tests (`npm test`) use fake engine/player/fs; the real model and audio path are not exercised by them.
