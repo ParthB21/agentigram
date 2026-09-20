@@ -155,4 +155,4 @@ per-host CLI subprocess bridges and Python SDK. Full mapping and deviations: `do
   Gemini from the repository, trust the workspace, then verify them with `/hooks list` and
   `/mcp list`.
 - Source and transcripts stay local. Outbound structured payloads are validated and redacted.
-- `openagents-develop/` is a read-only reference checkout and is never committed.
+- `openagents-develop/` is a read-only reference checkout and is never committed. alice
