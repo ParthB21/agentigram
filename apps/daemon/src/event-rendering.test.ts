@@ -48,6 +48,16 @@ describe('event rendering boundaries', () => {
     expect(
       speechMetadata(event({ type: 'TOOL_CALL', tool: 'Bash: rm -rf /', phase: 'post' })),
     ).toBeUndefined();
+    expect(
+      speechMetadata(
+        event({
+          type: 'MESSAGE',
+          to: 'backend',
+          text: "Agentigram's orchestrator has allocated this room's work.",
+          conversationId: 'orchestrator:plan:backend',
+        }),
+      ),
+    ).toBeUndefined();
   });
 
   it('attributes a line to the session that said it, not to its persona role', () => {

@@ -88,6 +88,7 @@ export class Planner {
   private timer: NodeJS.Timeout | undefined;
   private tail: Promise<void> = Promise.resolve();
   private fingerprint: string | undefined;
+  private hasAnnouncedInitialPlan = false;
   private lastPublishedAt = 0;
   private stopped = false;
   private current: Plan | undefined;
@@ -196,6 +197,10 @@ export class Planner {
 
   /** The spoken headline: one line the whole room hears. */
   private async announce(plan: Plan): Promise<void> {
+    if (plan.handoffs.length === 0 && this.hasAnnouncedInitialPlan) {
+      return;
+    }
+    this.hasAnnouncedInitialPlan = true;
     const text = `Orchestrator: ${plan.summary}`.slice(0, MAX_MESSAGE_TEXT_LENGTH);
     await this.emit('system', {
       type: 'MESSAGE',

@@ -182,12 +182,14 @@ function templateLine(event: Event, cards: PersonaCard[]): PersonaLine {
   const role = roleFor(event, cards);
   const payload = event.payload;
   switch (payload.type) {
-    case 'INTENT':
-      return line(
-        role,
-        `Taking ${payload.task}. I’ll call out interface changes before I write.`,
-        event.seq,
-      );
+    case 'INTENT': {
+      let task = (payload.task ?? '').trim();
+      if (task.endsWith('.')) task = task.slice(0, -1);
+      if (/^(working through|changing|updating|editing|refactoring|fixing|building|migrating)/i.test(task)) {
+        return line(role, `${task}.`, event.seq);
+      }
+      return line(role, `Working on: ${task}.`, event.seq);
+    }
     case 'FILE_WRITE':
       return line(role, `Updated ${payload.path}.`, event.seq);
     case 'API_DELTA': {

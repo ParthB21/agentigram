@@ -68,7 +68,8 @@ export type Plan = {
 };
 
 const norm = (value: string): string => value.replaceAll('\\', '/').replace(/^\.\//, '');
-const usable = (path: string): boolean => path.length > 0 && !IGNORED.some((rx) => rx.test(path));
+const usable = (path: string): boolean =>
+  path.length > 0 && path !== '.' && path !== '..' && !IGNORED.some((rx) => rx.test(path));
 const unique = (values: readonly string[]): string[] => [...new Set(values)];
 export const basename = (path: string): string => path.split('/').pop() ?? path;
 

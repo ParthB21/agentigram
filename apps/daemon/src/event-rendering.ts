@@ -44,6 +44,16 @@ export function speechMetadata(event: Event): SpeechMetadata | undefined {
   const speaker = safe.actor.sessionId ?? SYSTEM_SPEAKER;
   const arrival = presenceLine(safe, speaker);
   if (arrival) return arrival;
+
+  // Internal agent instructions and directed briefs from the orchestrator are not spoken aloud
+  if (
+    safe.payload.type === 'MESSAGE' &&
+    (safe.payload.conversationId?.startsWith('orchestrator:plan:') ||
+      safe.payload.text?.startsWith("Agentigram's orchestrator has allocated"))
+  ) {
+    return undefined;
+  }
+
   const line = speechForEvent(safe);
   if (!line) return undefined;
   return { speaker, text: line.text, priority: line.priority };

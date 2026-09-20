@@ -46,6 +46,8 @@ export class SpeechNarrator {
   private readonly lastSpokenAt = new Map<string, number>();
   /** speaker -> the last presence sentence said for them, and when. */
   private readonly lastPresence = new Map<string, { text: string; at: number }>();
+  /** speaker -> the last line said for them, and when. */
+  private readonly lastSpoken = new Map<string, { text: string; at: number }>();
 
   constructor(
     private readonly cooldownMs = WRITE_COOLDOWN_MS,
@@ -59,11 +61,18 @@ export class SpeechNarrator {
     if (event.payload.type === 'FILE_WRITE') return undefined;
 
     const line = speechMetadata(event);
-    if (!line || !isPresenceEvent(event)) return line;
+    if (!line) return undefined;
 
-    const said = this.lastPresence.get(line.speaker);
-    if (said?.text === line.text && now - said.at < this.repeatWindowMs) return undefined;
-    this.lastPresence.set(line.speaker, { text: line.text, at: now });
+    if (isPresenceEvent(event)) {
+      const said = this.lastPresence.get(line.speaker);
+      if (said?.text === line.text && now - said.at < this.repeatWindowMs) return undefined;
+      this.lastPresence.set(line.speaker, { text: line.text, at: now });
+      return line;
+    }
+
+    const previous = this.lastSpoken.get(line.speaker);
+    if (previous?.text === line.text && now - previous.at < this.repeatWindowMs) return undefined;
+    this.lastSpoken.set(line.speaker, { text: line.text, at: now });
     return line;
   }
 

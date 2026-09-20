@@ -154,4 +154,25 @@ describe('announcing who is in the room', () => {
     expect(narrator.line(presence('SESSION_STARTED', 'bob'), 0)).toBeDefined();
     expect(narrator.line(presence('SESSION_STARTED', 'payments'), 10)).toBeDefined();
   });
+
+  it('deduplicates identical spoken lines within the repeat window', () => {
+    const narrator = new SpeechNarrator();
+    const msg: Event = {
+      id: 'event-100',
+      seq: 100,
+      roomId: 'hackathon',
+      ts: new Date().toISOString(),
+      actor: { engineerId: 'system', kind: 'system' },
+      source: 'system',
+      payload: {
+        type: 'MESSAGE',
+        to: 'all',
+        text: 'Orchestrator: 3 agents in the room, no shared files.',
+      },
+    };
+    expect(narrator.line(msg, 0)).toBeDefined();
+    expect(narrator.line(msg, 1_000)).toBeUndefined();
+    expect(narrator.line(msg, REPEAT_WINDOW_MS + 1)).toBeDefined();
+  });
 });
+
