@@ -41,6 +41,15 @@ const ToolRequestSchema = z.object({
 /** Opens a long-lived stream of room frames instead of a single reply. Used by the Bare/Pear TUI. */
 const SubscribeRequestSchema = z.object({ type: z.literal('subscribe') });
 /**
+ * Read the replicated Hypercore. It goes through the daemon because Corestore
+ * takes an exclusive lock on its storage — nothing else can open the same core
+ * while the daemon is running.
+ */
+const CoreLogRequestSchema = z.object({
+  type: z.literal('corelog'),
+  limit: z.number().int().positive().max(1000).optional(),
+});
+/**
  * Dialogue rendered by the local QVAC model. `PERSONA_LINES` is dashboard-only (CLAUDE.md rule 5),
  * so an on-device model's prose reaches the room view and never an agent's context.
  */
@@ -58,6 +67,7 @@ export const IpcRequestSchema = z.discriminatedUnion('type', [
   ToolRequestSchema,
   SubscribeRequestSchema,
   NarrateRequestSchema,
+  CoreLogRequestSchema,
 ]);
 export type IpcRequest = z.infer<typeof IpcRequestSchema>;
 export type IpcResponse = { ok: true; output?: unknown } | { ok: false; error: string };

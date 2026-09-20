@@ -360,7 +360,7 @@ export function uninstall(root: string, runtimeBase?: string): InstallState {
   // The replicated history lives outside the repository, so without this it
   // survives `leave` — and the next `create` replays it, bringing back sessions
   // from a room that was supposedly torn down. Leaving means leaving.
-  rmSync(state.p2pStorage, { recursive: true, force: true });
+  removeStorage(state.p2pStorage);
   // The cursor is the last seq this machine applied, keyed by room. Keeping it
   // across a teardown points it past the end of a history that no longer
   // exists, and every replicated event then looks like one already seen.
@@ -378,4 +378,23 @@ export function readInstallState(root: string, runtimeBase?: string): InstallSta
 export function writeInstallState(state: InstallState, runtimeBase?: string): void {
   const path = runtimePaths(state.root, runtimeBase).state;
   writeAtomic(path, `${JSON.stringify(state, null, 2)}\n`, 0o600);
+}
+
+/**
+ * Remove a Corestore directory, allowing for a daemon that has not quite let go.
+ *
+ * The lock file is released when the process exits, but on Windows the handle
+ * can outlive the exit by a moment and `unlink` then fails with EBUSY. Retrying
+ * briefly is the difference between a clean `leave` and a half-torn-down room
+ * that refuses to be recreated.
+ */
+function removeStorage(directory: string): void {
+  // `maxRetries` makes Node itself back off and retry on EBUSY/ENOTEMPTY.
+  try {
+    rmSync(directory, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch {
+    // Leaving must still restore the repository's configuration. A directory
+    // that survives is stale data, not a broken install — the next `create`
+    // writes a fresh core beside it.
+  }
 }

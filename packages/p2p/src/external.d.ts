@@ -23,6 +23,10 @@ declare module 'corestore' {
   export type Core<T> = {
     readonly key: Uint8Array;
     readonly length: number;
+    /** Total size of the log in bytes. */
+    readonly byteLength: number;
+    /** True only on the writer's own core; every replica is read-only. */
+    readonly writable: boolean;
     ready(): Promise<void>;
     append(value: T | readonly T[]): Promise<unknown>;
     get(index: number): Promise<T | null>;

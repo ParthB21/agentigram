@@ -14,7 +14,7 @@ import Corestore from 'corestore';
 import Hyperswarm from 'hyperswarm';
 import { type ControlChannel, openControlChannel } from './channel.js';
 import { discoveryTopic, type RoomInvite, RoomInviteSchema } from './invite.js';
-import type { RoomTransport, TransportStatus } from './types.js';
+import type { RoomTransport, TransportStatus, CoreBlock, CoreLog } from './types.js';
 
 export type P2PRoomTransportOptions = {
   invite: RoomInvite;
@@ -71,6 +71,28 @@ export class P2PRoomTransport implements RoomTransport {
     this.pending.clear();
     await this.swarm.destroy();
     await this.store.close();
+  }
+
+/**
+   * The newest blocks of the replicated log, read through the process that
+   * already holds the Corestore lock.
+   */
+  async readCoreLog(limit = 20): Promise<CoreLog> {
+    await this.eventCore.ready();
+    const blocks: CoreBlock[] = [];
+    const from = Math.max(0, this.eventCore.length - Math.max(1, limit));
+    for (let index = from; index < this.eventCore.length; index += 1) {
+      // A replica can be ahead on the tree but missing a block it has not pulled.
+      const raw = await this.eventCore.get(index).catch(() => null);
+      if (raw !== null) blocks.push({ index, raw });
+    }
+    return {
+      key: b4a.toString(this.eventCore.key, 'hex'),
+      length: this.eventCore.length,
+      byteLength: this.eventCore.byteLength,
+      writable: this.eventCore.writable,
+      blocks,
+    };
   }
 
   submit(input: NewEvent): Promise<number> {

@@ -147,6 +147,20 @@ function repositoryFingerprint(root: string): string {
     .digest('hex');
 }
 
+/** Poll until the process is gone, or give up — a stuck daemon must not block `leave`. */
+async function waitForExit(pid: number, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      // Signal 0 tests for existence without delivering anything.
+      process.kill(pid, 0);
+    } catch {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 function startDaemon(state: InstallState): void {
   const child = spawn(process.execPath, [executable, 'daemon', '--root', state.root], {
     detached: true,
@@ -271,7 +285,7 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .command('leave')
     .description('Stop Agentigram and restore local configuration exactly.')
     .option('--root <path>', 'repository root', defaultRoot)
-    .action((options: { root: string }) => {
+    .action(async (options: { root: string }) => {
       const state = requiredState(resolveRoot(options.root));
       if (state.pid) {
         try {
@@ -279,6 +293,10 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
         } catch {
           // A stopped daemon does not prevent exact configuration restoration.
         }
+        // Corestore holds an exclusive lock on its storage, and removing that
+        // storage is part of leaving — so wait for the process to actually go
+        // rather than racing it and failing with EBUSY.
+        await waitForExit(state.pid);
       }
       uninstall(state.root);
       console.log(`Left ${state.roomId}. Local configuration restored.`);
@@ -421,6 +439,55 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
           resolve();
         });
       });
+    });
+
+  program
+    .command('log')
+    .description('Read the replicated Hypercore this room is built from.')
+    .option('--root <path>', 'repository root', defaultRoot)
+    .option('--limit <count>', 'how many of the newest blocks to show', '20')
+    .option('--json', 'print the raw blocks instead of one line each')
+    .action(async (options: { root: string; limit: string; json?: boolean }) => {
+      const state = requiredState(resolveRoot(options.root));
+      // Through the daemon: Corestore holds an exclusive lock on its storage,
+      // so opening the same core from here would fail while the room is up.
+      const response = await requestIpc(
+        state.socketPath,
+        { type: 'corelog', limit: Number(options.limit) || 20 },
+        5_000,
+      );
+      if (!response.ok) throw new Error(response.error);
+      const log = response.output as {
+        key: string;
+        length: number;
+        byteLength: number;
+        writable: boolean;
+        blocks: { index: number; raw: string }[];
+      };
+      if (options.json) {
+        console.log(JSON.stringify(log, null, 2));
+        return;
+      }
+      console.log(`core    ${log.key}`);
+      console.log(
+        `blocks  ${log.length} (${log.byteLength} bytes) · ${log.writable ? 'writable — this laptop is the authority' : 'read-only replica'}`,
+      );
+      console.log('');
+      for (const entry of log.blocks) {
+        let line = entry.raw;
+        try {
+          const event = JSON.parse(entry.raw) as {
+            seq: number;
+            ts: string;
+            actor?: { sessionId?: string };
+            payload: { type: string };
+          };
+          line = `${String(event.seq).padStart(4)}  ${event.ts}  ${(event.actor?.sessionId ?? '-').padEnd(10)} ${event.payload.type}`;
+        } catch {
+          // A block that is not an event still deserves to be shown.
+        }
+        console.log(`[${String(entry.index).padStart(4)}] ${line}`);
+      }
     });
 
   program

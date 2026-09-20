@@ -20,7 +20,7 @@ import {
   wrapPeerData,
 } from '@agentigram/adapters';
 import { parseToolCall } from '@agentigram/mcp';
-import { P2PRoomTransport, type RoomTransport } from '@agentigram/p2p';
+import { type CoreLogReader, P2PRoomTransport, type RoomTransport } from '@agentigram/p2p';
 import {
   type Event,
   emptyRoomState,
@@ -313,6 +313,13 @@ export class LaptopDaemon {
     }
     // Intercepted by the IPC server, which keeps the socket open; it never reaches here.
     if (request.type === 'subscribe') return { ok: false, error: 'subscribe is a stream' };
+    if (request.type === 'corelog') {
+      const transport = this.transport as Partial<CoreLogReader>;
+      if (!transport.readCoreLog) {
+        return { ok: false, error: 'this transport has no replicated log' };
+      }
+      return { ok: true, output: await transport.readCoreLog(request.limit) };
+    }
     if (request.type === 'human') return this.handleHumanAction(request.action);
     if (request.type === 'tool')
       return this.handleTool(request.name, request.args, request.sessionId);

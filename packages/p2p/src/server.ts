@@ -6,7 +6,7 @@ import Corestore from 'corestore';
 import Hyperswarm from 'hyperswarm';
 import { type ControlChannel, openControlChannel } from './channel.js';
 import { createCapability, discoveryTopic, encodeInvite, type RoomInvite } from './invite.js';
-import type { AuthorityHandler, AuthorityPeer } from './types.js';
+import type { AuthorityHandler, AuthorityPeer, CoreBlock, CoreLog } from './types.js';
 
 type PeerChannel = { peer: AuthorityPeer; channel: ControlChannel };
 
@@ -67,6 +67,28 @@ export class P2PRoomServer {
       .join(discoveryTopic(this.inviteValue), { server: true, client: false })
       .flushed();
     return this.inviteValue;
+  }
+
+/**
+   * The newest blocks of the replicated log, read through the process that
+   * already holds the Corestore lock.
+   */
+  async readCoreLog(limit = 20): Promise<CoreLog> {
+    await this.eventCore.ready();
+    const blocks: CoreBlock[] = [];
+    const from = Math.max(0, this.eventCore.length - Math.max(1, limit));
+    for (let index = from; index < this.eventCore.length; index += 1) {
+      // A replica can be ahead on the tree but missing a block it has not pulled.
+      const raw = await this.eventCore.get(index).catch(() => null);
+      if (raw !== null) blocks.push({ index, raw });
+    }
+    return {
+      key: b4a.toString(this.eventCore.key, 'hex'),
+      length: this.eventCore.length,
+      byteLength: this.eventCore.byteLength,
+      writable: this.eventCore.writable,
+      blocks,
+    };
   }
 
   async publish(events: readonly Event[]): Promise<void> {

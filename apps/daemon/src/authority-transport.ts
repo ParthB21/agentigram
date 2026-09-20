@@ -45,6 +45,11 @@ export class AuthorityTransport implements RoomTransport {
     return this.inviteValue;
   }
 
+  /** The log this room is built from, read through the lock this process holds. */
+  readCoreLog(limit?: number) {
+    return this.server.readCoreLog(limit);
+  }
+
   get inviteUri(): string | undefined {
     return this.inviteValue ? encodeInvite(this.inviteValue) : undefined;
   }
