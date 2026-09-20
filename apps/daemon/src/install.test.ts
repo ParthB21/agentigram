@@ -43,7 +43,7 @@ describe('join / leave installation', () => {
     const before = capture(root);
     const claudeBefore = readFileSync(claudeConfigPath, 'utf8');
 
-    install({
+    const state = install({
       root,
       roomId: 'hackathon',
       mode: 'authority',
@@ -54,6 +54,7 @@ describe('join / leave installation', () => {
       runtimeBase,
       claudeConfigPath,
     });
+    expect(state.authoritySeed).toMatch(/^[0-9a-f]{64}$/);
     const settings = readFileSync(join(root, '.claude', 'settings.local.json'), 'utf8');
     expect(settings).toContain('PostToolUse');
     expect(settings).toContain('CLAUDE_CODE_ENABLE_TELEMETRY');

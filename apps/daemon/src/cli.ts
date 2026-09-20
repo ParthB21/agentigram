@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { accessSync, chmodSync, constants, existsSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -40,6 +40,13 @@ async function readStdin(): Promise<string> {
 function requiredState(root: string): InstallState {
   const state = readInstallState(root);
   if (!state) throw new Error(`Agentigram is not joined in ${root}`);
+  // Installs created before stable authority identities were introduced get a
+  // seed exactly once. Keeping it in the protected install state means daemon
+  // restarts no longer invalidate every outstanding room invite.
+  if (state.mode === 'authority' && !state.authoritySeed) {
+    state.authoritySeed = randomBytes(32).toString('hex');
+    writeInstallState(state);
+  }
   return state;
 }
 

@@ -15,13 +15,14 @@ export type P2PRoomServerOptions = {
   repositoryFingerprint: string;
   storage: string;
   capability?: string;
+  seed?: Uint8Array;
   handle: AuthorityHandler;
   onDisconnect?(peer: AuthorityPeer): void | Promise<void>;
 };
 
 export class P2PRoomServer {
   private readonly store: Corestore;
-  private readonly swarm = new Hyperswarm();
+  private readonly swarm: Hyperswarm;
   private readonly capability: string;
   private readonly peers = new Map<string, PeerChannel>();
   private readonly eventCore;
@@ -29,6 +30,7 @@ export class P2PRoomServer {
   private stopping = false;
 
   constructor(private readonly options: P2PRoomServerOptions) {
+    this.swarm = new Hyperswarm(options.seed ? { seed: options.seed } : undefined);
     this.store = new Corestore(options.storage);
     this.capability = options.capability ?? createCapability();
     this.eventCore = this.store.get<string>({
@@ -69,7 +71,7 @@ export class P2PRoomServer {
     return this.inviteValue;
   }
 
-/**
+  /**
    * The newest blocks of the replicated log, read through the process that
    * already holds the Corestore lock.
    */

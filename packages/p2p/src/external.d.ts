@@ -5,6 +5,7 @@ declare module 'hyperswarm' {
   export type Discovery = { flushed(): Promise<void>; destroy(): Promise<void> };
 
   export default class Hyperswarm {
+    constructor(options?: { seed?: Uint8Array });
     readonly keyPair: { publicKey: Uint8Array; secretKey: Uint8Array };
     readonly connections: Set<Duplex>;
     on(event: 'connection', listener: (socket: Duplex, peerInfo: PeerInfo) => void): this;
