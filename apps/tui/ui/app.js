@@ -50,6 +50,9 @@ const SPEECH_MISSING = '[×]'
 const SPEECH_UNAVAILABLE = '[!]'
 const SPEECH_BTN_WIDTH = 3 // visible characters for the bracket+glyph+bracket
 
+/** The speaker the daemon gives a line that belongs to the room rather than to an agent. */
+const SYSTEM_SPEAKER = 'agentigram'
+
 class App {
   constructor({ inference, room, speech, model, version, roomId, localSession } = {}) {
     this.inference = inference || null
@@ -93,8 +96,21 @@ class App {
      * Local agent starts enabled; all others start muted.
      */
     this.speechMuted = new Map()
-    /** The sessionId whose line is currently being spoken. */
+    /** The sessionId whose line is currently being played. */
     this.speakingSession = null
+    /**
+     * The sessionId whose line is being synthesised, and the speakers queued
+     * behind it. Synthesis takes seconds, so this — not `speakingSession` — is
+     * what names the next speaker at the moment their line arrives.
+     */
+    this.preparingSession = null
+    this.speechPending = []
+    /**
+     * Whether this laptop voices the whole room. The authority runs the
+     * orchestrator, which negotiates for agents that are not here to speak for
+     * themselves; a peer voices only its own agent.
+     */
+    this.voiceAll = false
     /**
      * Whether the Speech controller has errored out irrecoverably.
      * A single model error sets this; messaging continues unaffected.
@@ -148,6 +164,7 @@ class App {
         this.roomId = msg.state?.roomId || this.roomId
         this.modelAccess = msg.state?.mode === 'authority' ? 'authority' : 'peer'
         if (this.modelAccess === 'peer') this.phase = 'disabled'
+        this.voiceAll = this.modelAccess === 'authority'
         // Seed the local session from the room state if not already known.
         if (!this.localSession && msg.state?.sessionId) {
           this.localSession = msg.state.sessionId
@@ -245,12 +262,22 @@ class App {
         return [this, null]
 
       case 'speech.queued':
-        // A line is waiting; no special indicator needed.
+        // Superseded by speech.queue, which carries the whole snapshot.
+        return [this, null]
+
+      case 'speech.queue':
+        // The controller's own account of what is audible: who is playing, who
+        // is being synthesised, and who is behind them.
+        this.speakingSession = msg.speaking || null
+        this.preparingSession = msg.preparing || null
+        this.speechPending = msg.pending || []
+        this._layout()
         return [this, null]
 
       case 'speech.started':
         // msg.sessionId: whose voice is now playing.
         this.speakingSession = msg.sessionId || null
+        if (this.preparingSession === this.speakingSession) this.preparingSession = null
         if (msg.sessionId) this.speechErrors.delete(msg.sessionId)
         this._layout()
         return [this, null]
@@ -373,13 +400,14 @@ class App {
   }
 
   /**
-   * Whether a session's speech is currently muted.
-   * Local agent defaults to unmuted; everyone else defaults to muted.
+   * Whether a session's speech is currently muted. Mirrors the controller's own
+   * default so a row reads the same before and after the first room.state seeds
+   * the map: this laptop's agent always speaks, the whole roster speaks on the
+   * authority, and everyone else waits to be unmuted.
    */
   _isMuted(sessionId) {
     if (this.speechMuted.has(sessionId)) return this.speechMuted.get(sessionId)
-    // Default: local agent enabled, remote agents muted.
-    return sessionId !== this.localSession
+    return !(sessionId === this.localSession || sessionId === SYSTEM_SPEAKER || this.voiceAll)
   }
 
   /**
@@ -396,6 +424,11 @@ class App {
     }
     if (this.speakingSession === sessionId) {
       return style().foreground(SPEAKING).render(SPEECH_PLAYING)
+    }
+    // Being drafted or waiting: the row moves the moment the line lands, rather
+    // than a few seconds later when there is finally audio to play.
+    if (this.preparingSession === sessionId || this.speechPending.includes(sessionId)) {
+      return style().foreground(ACCENT).render(`[${this.spinner.view()}]`)
     }
     if (this._isMuted(sessionId)) {
       return style().foreground(MUTED).render(SPEECH_MUTED)
@@ -613,8 +646,8 @@ class App {
     const mode = state.mode ? ` ${state.mode}` : ''
     const link =
       this.link === 'connected'
-        ? style().foreground(OK).render('daemon ✓')
-        : style().foreground(DANGER).render(`daemon ${this.link}`)
+        ? style().foreground(OK).render('Daemon ✓')
+        : style().foreground(DANGER).render(`Daemon ${this.link}`)
     if (state.mode !== 'authority') return fit(`${left}${mode}  ${link}`, this.width)
     const engine =
       this.phase === 'ready'
@@ -653,7 +686,7 @@ class App {
       const busy = here === 'live' ? activity[agent.sessionId] : undefined
 
       // ── fixed-width columns ───────────────────────────────────────────────
-      const sessionCol = pad(agent.sessionId, 12)
+      const sessionCol = pad(displayName(agent.sessionId), 12)
       const hostLabel = agent.host || ''
       // At very narrow widths, truncate the host label rather than the button.
       const actualHostWidth = Math.min(
@@ -766,16 +799,46 @@ class App {
       ? `${live}/${agents.length} online · ${summary.openCollisions} open · ${summary.activeLeases} leases`
       : 'waiting for the daemon'
     const voice = this.speechLoading ? ` · voice ${Math.round(this.speechPercentage)}%` : ''
+    const grey = style().foreground(MUTED)
+    return fit(
+      `${grey.render(`  ${counts}${voice}`)}${this._speaker()}${grey.render('   [q] quit   [s] voice')}`,
+      this.width
+    )
+  }
+
+  /**
+   * Who the room is listening to. The orchestrator debates on behalf of agents
+   * that have no laptop here, so with several voices in play "which one is this"
+   * is the question the audio alone cannot answer — and it has to be answered
+   * before the audio starts, not once it is already halfway through a sentence.
+   */
+  _speaker() {
+    if (this.speakingSession) {
+      return style()
+        .foreground(SPEAKING)
+        .render(`   ${displayName(this.speakingSession)} speaking`)
+    }
+    const next = this.preparingSession || this.speechPending[0]
+    if (!next) return ''
     return style()
-      .foreground(MUTED)
-      .render(fit(`  ${counts}${voice}   [q] quit   [s] voice`, this.width))
+      .foreground(ACCENT)
+      .render(`   ${displayName(next)} next`)
   }
 }
 
 // ── helpers ────────────────────────────────────────────────────────────────
 
 function eventText(text) {
-  return String(text || '').replace(/^#\d+\s+/, '')
+  const value = String(text || '')
+  const hasEventSequence = /^#\d+\s+/.test(value)
+  const withoutSequence = value.replace(/^#\d+\s+/, '')
+  return hasEventSequence
+    ? withoutSequence.replace(/^(\S+)/, (name) => displayName(name))
+    : withoutSequence
+}
+
+function displayName(value) {
+  return String(value || '').replace(/[A-Za-z]/, (letter) => letter.toUpperCase())
 }
 
 function rule(width) {

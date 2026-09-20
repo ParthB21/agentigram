@@ -93,6 +93,11 @@ inference.on('error', (err) => repaint({ type: 'qvac.error', message: err.messag
 room.on('state', (state) => {
   program.send({ type: 'room.state', state })
   speech.setLocalSession(state.sessionId)
+  // The authority is where the orchestrator negotiates, and it negotiates for
+  // agents whose laptop is not here to be their voice. It therefore speaks the
+  // whole room; a peer speaks only its own agent, so a message is not read out
+  // by every machine at once.
+  speech.setVoiceAll(state.mode === 'authority')
   if (speechFloor === null) speechFloor = state.lastSeq
   if (state.mode === 'authority' && !inferenceStarted) {
     inferenceStarted = true
@@ -102,9 +107,11 @@ room.on('state', (state) => {
 room.on('event', (frame) => {
   program.send({ type: 'room.event', frame })
   if (frame.speech && speechFloor !== null && frame.seq > speechFloor) {
+    // The daemon resolves the speaker: the session id where there is one, and
+    // the room's own name where there is not.
     speech.enqueue({
       seq: frame.seq,
-      speaker: frame.sessionId || frame.speech.speaker,
+      speaker: frame.speech.speaker,
       text: frame.speech.text,
       priority: frame.speech.priority
     })
@@ -116,6 +123,9 @@ room.on('warn', (text) => program.send({ type: 'room.warn', text }))
 speech.on('progress', (percentage) => program.send({ type: 'speech.progress', percentage }))
 speech.on('ready', (gpu) => repaint({ type: 'speech.ready', gpu }))
 speech.on('queued', ({ speaker }) => program.send({ type: 'speech.queued', sessionId: speaker }))
+speech.on('queue', ({ speaking, preparing, pending }) =>
+  program.send({ type: 'speech.queue', speaking, preparing, pending })
+)
 speech.on('started', ({ speaker }) => program.send({ type: 'speech.started', sessionId: speaker }))
 speech.on('finished', ({ speaker, interrupted }) =>
   program.send({ type: 'speech.finished', sessionId: speaker, interrupted })
@@ -169,6 +179,11 @@ try {
   // remain lightweight room participants. The authority-only model is the
   // boundary for a future orchestrator, not an autonomous orchestrator yet.
   room.ready().catch((err) => program.send({ type: 'room.warn', text: err.message }))
+
+  // Unlike the negotiation model, the voice is not authority-only: every laptop
+  // speaks at least its own agent. Load it now so the first line of a debate is
+  // heard rather than spent downloading. Failures arrive on the 'error' event.
+  speech.warm().catch(() => {})
 
   await program.run()
 } finally {
