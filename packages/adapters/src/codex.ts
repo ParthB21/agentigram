@@ -1,3 +1,4 @@
+import { relative, resolve, sep } from 'node:path';
 import type { NewEvent } from '@agentigram/protocol';
 import { z } from 'zod';
 import type { AdapterContext, AgentAdapter } from './registry.js';
@@ -37,6 +38,64 @@ export function codexToolPaths(input: Pick<CodexHookInput, 'tool_name' | 'tool_i
     match[1]?.trim(),
   );
   return [...new Set(paths.filter((path): path is string => !!path))];
+}
+
+/** Protocol paths are always POSIX and repo-relative, whatever the host OS. */
+function repoPath(cwd: string, value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  const absolute = resolve(cwd, value);
+  const path = relative(cwd, absolute);
+  return (path.startsWith('..') ? absolute : path || '.').split(sep).join('/');
+}
+
+/**
+ * Shell commands that mean "this file was read".
+ *
+ * Codex has no built-in read tool: its canonical tools are `Bash`, `apply_patch`
+ * and MCP tools, so an agent inspecting a file runs `cat`/`sed`/`head` through
+ * the shell. Without this, a Codex session never builds a read set and can
+ * never be the affected side of a collision.
+ */
+const READ_COMMANDS = new Set([
+  'cat',
+  'head',
+  'tail',
+  'less',
+  'more',
+  'bat',
+  'nl',
+  'sed',
+  'awk',
+  'rg',
+  'grep',
+  'wc',
+]);
+
+// Anything that looks like a source file rather than a flag or a glob.
+const FILE_LIKE = /^[^-][^\s'"|;&<>()]*\.[A-Za-z0-9]+$/;
+
+/**
+ * Best-effort file paths out of a shell command line. Deliberately conservative:
+ * a missed read costs a weaker collision tier, but a wrong path would put a file
+ * in someone's read set that they never opened.
+ */
+export function codexShellReadPaths(cwd: string, command: unknown): string[] {
+  if (typeof command !== 'string' || command.length === 0) return [];
+  const found: string[] = [];
+  // Split on shell separators so `cd x && cat a.ts | head` is seen as segments.
+  for (const segment of command.split(/\|\||&&|[|;\n]/)) {
+    const tokens = segment.trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) continue;
+    const binary = (tokens[0] ?? '').split('/').pop() ?? '';
+    if (!READ_COMMANDS.has(binary)) continue;
+    for (const token of tokens.slice(1)) {
+      const bare = token.replace(/^["']|["']$/g, '');
+      if (!FILE_LIKE.test(bare)) continue;
+      const path = repoPath(cwd, bare);
+      if (path) found.push(path);
+    }
+  }
+  return [...new Set(found)];
 }
 
 export class CodexAdapter implements AgentAdapter {
@@ -87,6 +146,22 @@ export class CodexAdapter implements AgentAdapter {
             path,
             worktree: context.worktree ?? input.cwd,
           },
+        }));
+      }
+      // Reads. An MCP filesystem tool names its file directly; the shell does
+      // not, so the command line has to be read for it.
+      const readPaths = /^mcp__.*(read|cat|open|view)/i.test(input.tool_name ?? '')
+        ? [repoPath(input.cwd, input.tool_input?.path ?? input.tool_input?.file_path)].filter(
+            (path): path is string => !!path,
+          )
+        : codexShellReadPaths(input.cwd, input.tool_input?.command);
+      // Symbols are left off deliberately: the daemon resolves them for any
+      // FILE_READ that arrives without them (`attachReadSymbols`), using the
+      // repo's TypeScript index, so every host gets the same treatment.
+      if (readPaths.length > 0) {
+        return readPaths.map((path) => ({
+          ...base(),
+          payload: { type: 'FILE_READ' as const, path },
         }));
       }
       return [

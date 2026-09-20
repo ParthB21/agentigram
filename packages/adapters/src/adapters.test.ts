@@ -2,6 +2,7 @@ import { symbolKey } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
 import {
   type AdapterStatus,
+  CodexAdapter,
   createAdapter,
   HealthTracker,
   listHosts,
@@ -175,5 +176,87 @@ describe('peer data wrapper (rule 6)', () => {
 
   it('hard-caps a single enormous line', () => {
     expect(truncateLines('x'.repeat(5000), 100).text.length).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('Codex reads', () => {
+  const ctx = {
+    roomId: 'r',
+    engineerId: 'e',
+    sessionId: 'payments',
+    newId: () => 'id',
+    branch: 'main',
+    worktree: '/repo',
+  };
+  const post = (command: string, tool = 'Bash') => ({
+    session_id: 's',
+    cwd: '/repo',
+    hook_event_name: 'PostToolUse' as const,
+    tool_name: tool,
+    tool_input: { command },
+    tool_response: {},
+  });
+
+  it('treats a shell read as a FILE_READ, since Codex has no read tool', async () => {
+    const events = await new CodexAdapter().normalize(post('cat src/types/user.ts'), ctx);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.payload).toMatchObject({
+      type: 'FILE_READ',
+      path: 'src/types/user.ts',
+    });
+  });
+
+  it('handles absolute paths, quotes, pipes and chained commands', async () => {
+    const events = await new CodexAdapter().normalize(
+      post(`cd /repo && sed -n 1,40p '/repo/src/checkout.ts' | head -20`),
+      ctx,
+    );
+    expect(events.map((e) => (e.payload as { path?: string }).path)).toEqual(['src/checkout.ts']);
+  });
+
+  it('reads several files in one command', async () => {
+    const events = await new CodexAdapter().normalize(
+      post('cat src/types/user.ts src/checkout.ts'),
+      ctx,
+    );
+    expect(events.map((e) => (e.payload as { path?: string }).path)).toEqual([
+      'src/types/user.ts',
+      'src/checkout.ts',
+    ]);
+  });
+
+  it('picks up an MCP filesystem read', async () => {
+    const events = await new CodexAdapter().normalize(
+      {
+        session_id: 's',
+        cwd: '/repo',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'mcp__filesystem__read_file',
+        tool_input: { path: 'src/types/user.ts' },
+      },
+      ctx,
+    );
+    expect(events[0]?.payload).toMatchObject({ type: 'FILE_READ', path: 'src/types/user.ts' });
+  });
+
+  it('does not invent a read from a command that is not one', async () => {
+    for (const command of ['npm test', 'git status', 'ls -la', 'rm -rf build']) {
+      const events = await new CodexAdapter().normalize(post(command), ctx);
+      expect(events[0]?.payload).toMatchObject({ type: 'TOOL_CALL' });
+    }
+  });
+
+  it('still reports an apply_patch write, not a read', async () => {
+    const events = await new CodexAdapter().normalize(
+      {
+        session_id: 's',
+        cwd: '/repo',
+        hook_event_name: 'PostToolUse',
+        tool_name: 'apply_patch',
+        tool_input: { command: '*** Update File: src/types/user.ts\n' },
+      },
+      ctx,
+    );
+    expect(events[0]?.payload).toMatchObject({ type: 'FILE_WRITE', path: 'src/types/user.ts' });
   });
 });
