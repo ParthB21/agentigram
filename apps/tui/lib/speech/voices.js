@@ -4,15 +4,18 @@
 // sentence. Hashing the session id picks one from a fixed table, which makes it
 // identical across restarts and across laptops: everyone hears "payments" as
 // the same person.
-const NAMES = ['Jon', 'Lea', 'Gary', 'Jenna', 'Mike', 'Laura']
+//
+// Jon and Lea are Parler-TTS Mini's cleanest benchmark speakers — the model was
+// trained on the most studio-quality data for these two, so they produce stable,
+// natural output. Other names (Gary, Mike) often trigger raspy, muffled, or
+// eerie-sounding audio because the model's decoder loses conditioning.
+const NAMES = ['Jon', 'Lea']
 const DELIVERY = [
-  'speaks in a natural, conversational tone with clear articulation and moderate pace',
-  'has a bright, warm, and friendly voice with natural inflection at a comfortable pace',
-  'speaks clearly and confidently with a calm, smooth tone at a steady pace',
-  'has a crisp, articulate voice with an upbeat, natural delivery',
-  'speaks with a pleasant, clear voice and natural, easy-going cadence',
+  'speaks in a natural, friendly, conversational tone with clear articulation and moderate pace',
+  'speaks clearly, warmly, and confidently with a cheerful, smooth tone at a steady pace',
+  'has a bright, crisp, articulate voice with an upbeat, natural cadence',
 ]
-const FIXED = 'The recording quality is excellent, close-up, and free of background noise.'
+const FIXED = 'The recording quality is studio-grade, very clear, close-up, and completely free of background noise or distortion.'
 
 // FNV-1a, 32-bit. Not cryptographic; it only has to be stable and spread out.
 function hash(text) {

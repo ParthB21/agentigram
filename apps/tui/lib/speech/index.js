@@ -35,6 +35,25 @@ const URGENT = 3
  */
 const SYSTEM_SPEAKER = 'agentigram'
 
+/**
+ * Parler-TTS was trained on clean conversational prose. Code symbols, unicode
+ * arrows, camelCase dots and markdown characters cause the audio decoder to
+ * lose conditioning and produce distorted or eerie sounds. This converts code
+ * notation to spoken English before synthesis.
+ */
+function cleanTextForSpeech (raw) {
+  const CODE_CHARS = /[#_:;\\/{}\[\]"`*~|<>]/g
+  return String(raw)
+    .replace(/\u2192/g, ' to ')
+    .replace(/UUID/gi, 'U U I D')
+    .replace(/\bv4\b/gi, 'version four')
+    .replace(/([a-z])\.([a-z])/gi, '$1 $2')
+    .replace(CODE_CHARS, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/([a-zA-Z0-9])$/, '$1.')
+}
+
 class Speech extends EventEmitter {
   constructor({ engine, player, settings, maxQueue = MAX_QUEUE } = {}) {
     super()
@@ -183,7 +202,7 @@ class Speech extends EventEmitter {
     this._announce()
     try {
       const { samples, sampleRate } = await this.engine.synthesize(
-        item.text,
+        cleanTextForSpeech(item.text),
         voiceFor(item.speaker)
       )
       if (current.cancelled || this.closed) return
