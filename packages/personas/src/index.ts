@@ -8,6 +8,26 @@ const NOTABLE_TYPES = new Set([
   'RUN_VERIFIED',
   'DUEL_RESULT',
 ]);
+const SPEAKABLE_TYPES = new Set([
+  'INTENT',
+  'DISCOVERY',
+  'BLOCKER',
+  'BUG',
+  'MESSAGE',
+  'COMPLETE_CLAIMED',
+  'FILE_WRITE',
+  'API_DELTA',
+  'COLLISION',
+  'LEASE_DENIED',
+  'PROPOSAL',
+  'COUNTER',
+  'ACCEPT',
+  'ESCALATE',
+  'CONTRACT_COMPILED',
+  'SPEC_MERGE_RESULT',
+  'RUN_VERIFIED',
+  'DUEL_RESULT',
+]);
 
 export type PersonaCard = {
   role: string;
@@ -105,18 +125,27 @@ export function prioritize(lines: PersonaLine[], events: Event[]): PrioritizedPe
   return lines.map((personaLine) => {
     const event = bySequence.get(personaLine.seq);
     const payload = event?.payload;
-    const type = payload?.type;
-    const priority: PrioritizedPersonaLine['priority'] =
-      type === 'ESCALATE' || (payload?.type === 'COLLISION' && payload.tier === 'CONFIRMED')
-        ? 3
-        : type === 'SPEC_MERGE_RESULT' || type === 'BLOCKER' || type === 'LEASE_DENIED'
-          ? 2
-          : type === 'COLLISION' || type === 'MESSAGE'
-            ? 1
-            : 0;
+    const priority = priorityFor(event);
     const replyTo = payload?.type === 'MESSAGE' ? payload.to : undefined;
     return { ...personaLine, priority, ...(replyTo ? { replyTo } : {}) };
   });
+}
+
+/** Deterministic, synchronous presentation metadata for local speech clients. */
+export function speechForEvent(
+  event: Event,
+  personaCards: PersonaCard[] = DEFAULT_PERSONAS,
+): PrioritizedPersonaLine | undefined {
+  if (!SPEAKABLE_TYPES.has(event.payload.type)) return undefined;
+  const personaLine = safetyPass(
+    templateLine(event, personaCards.length > 0 ? personaCards : DEFAULT_PERSONAS),
+  );
+  const replyTo = event.payload.type === 'MESSAGE' ? event.payload.to : undefined;
+  return {
+    ...personaLine,
+    priority: priorityFor(event),
+    ...(replyTo ? { replyTo } : {}),
+  };
 }
 
 /** Deterministically groups an ordered event stream into renderer-sized conversation windows. */
@@ -217,6 +246,12 @@ function templateLine(event: Event, cards: PersonaCard[]): PersonaLine {
       return line(role, 'Verified. The work and its contract agree.', event.seq);
     case 'BLOCKER':
       return line(role, `Blocked: ${payload.text}`, event.seq);
+    case 'DISCOVERY':
+      return line(role, `Found: ${payload.text}`, event.seq);
+    case 'BUG':
+      return line(role, `Found a bug: ${payload.text}`, event.seq);
+    case 'COMPLETE_CLAIMED':
+      return line(role, `Finished: ${payload.summary}`, event.seq);
     case 'DUEL_RESULT':
       return line(
         role,
@@ -230,6 +265,18 @@ function templateLine(event: Event, cards: PersonaCard[]): PersonaLine {
     default:
       return line(role, describeType(payload.type), event.seq);
   }
+}
+
+function priorityFor(event: Event | undefined): PrioritizedPersonaLine['priority'] {
+  const payload = event?.payload;
+  const type = payload?.type;
+  return type === 'ESCALATE' || (payload?.type === 'COLLISION' && payload.tier === 'CONFIRMED')
+    ? 3
+    : type === 'SPEC_MERGE_RESULT' || type === 'BLOCKER' || type === 'LEASE_DENIED'
+      ? 2
+      : type === 'COLLISION' || type === 'MESSAGE'
+        ? 1
+        : 0;
 }
 
 function roleFor(event: Event, cards: PersonaCard[]): string {

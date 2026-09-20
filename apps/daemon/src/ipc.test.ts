@@ -19,4 +19,33 @@ describe('IPC hook validation', () => {
       }),
     ).toMatchObject({ type: 'hook', event: 'BeforeTool' });
   });
+
+  it('validates transactional runner requests', () => {
+    expect(
+      IpcRequestSchema.parse({
+        type: 'runner_complete',
+        sessionId: 'frontend',
+        claimId: 'claim-1',
+        outcome: 'acted',
+        reply: { to: 'backend', text: 'Updated the caller.' },
+      }),
+    ).toMatchObject({ type: 'runner_complete', outcome: 'acted' });
+    expect(
+      IpcRequestSchema.safeParse({
+        type: 'runner_complete',
+        sessionId: 'frontend',
+        claimId: 'claim-1',
+        outcome: 'acted',
+      }).success,
+    ).toBe(false);
+    expect(
+      IpcRequestSchema.safeParse({
+        type: 'runner_complete',
+        sessionId: 'frontend',
+        claimId: 'claim-1',
+        outcome: 'no_action',
+        reply: { to: 'backend', text: 'unexpected' },
+      }).success,
+    ).toBe(false);
+  });
 });

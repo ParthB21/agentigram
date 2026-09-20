@@ -21,6 +21,7 @@
     "@agentigram/analysis": "workspace:*",
     "@agentigram/coordinator": "workspace:*",
     "@agentigram/p2p": "workspace:*",
+    "@agentigram/personas": "workspace:*",
     "@agentigram/reducer": "workspace:*",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@parcel/watcher": "2.6.0",

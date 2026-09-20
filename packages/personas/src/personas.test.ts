@@ -1,6 +1,6 @@
 import type { Event } from '@agentigram/protocol';
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_PERSONAS, render } from './index.js';
+import { DEFAULT_PERSONAS, render, speechForEvent } from './index.js';
 
 const event = (seq: number, payload: Event['payload']): Event => ({
   id: `event-${seq}`,
@@ -65,5 +65,23 @@ describe('@agentigram/personas', () => {
         seq: 4,
       },
     ]);
+  });
+
+  it('renders exact messages as synchronous speech metadata', () => {
+    expect(
+      speechForEvent(event(5, { type: 'MESSAGE', to: 'frontend', text: 'The API is ready.' })),
+    ).toEqual({
+      speaker: 'Backend',
+      text: 'The API is ready.',
+      seq: 5,
+      priority: 1,
+      replyTo: 'frontend',
+    });
+  });
+
+  it('does not expose raw tool calls as speech', () => {
+    expect(
+      speechForEvent(event(6, { type: 'TOOL_CALL', tool: 'Bash: token=secret', phase: 'post' })),
+    ).toBeUndefined();
   });
 });

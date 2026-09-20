@@ -11,6 +11,8 @@ export {
 export {
   type ApiChange,
   ApiChangeSchema,
+  MAX_AUTOMATION_DEPTH,
+  MAX_MESSAGE_TEXT_LENGTH,
 } from './payloads-observed.js';
 export { MARKET_KINDS, MarketKindSchema } from './payloads-other.js';
 export * from './state.js';
