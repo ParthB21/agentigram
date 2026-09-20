@@ -459,21 +459,39 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     });
 
   program
-    .command('unfreeze <collisionId>')
-    .description('Human decision: release the files frozen by a collision so agents can resume.')
+    .command('unfreeze [collisionId]')
+    .description('Human decision: release frozen files so agents can resume (--all for every one).')
+    .option('--all', 'release every open collision')
     .option('--root <path>', 'repository root', defaultRoot)
-    .action(async (collisionId: string, options: { root: string }) => {
+    .action(async (collisionId: string | undefined, options: { root: string; all?: boolean }) => {
       const state = requiredState(resolveRoot(options.root));
+      let ids = collisionId ? [collisionId] : [];
+      if (options.all) {
+        const status = await requestIpc(state.socketPath, { type: 'status' }, 5_000);
+        if (!status.ok) throw new Error(status.error);
+        const open = (status.output as { collisions?: { collisionId: string }[] }).collisions ?? [];
+        ids = open.map((collision) => collision.collisionId);
+      }
+      if (ids.length === 0) {
+        console.log(
+          options.all
+            ? 'Nothing is frozen.'
+            : 'Give a collision id, or use --all to release every one.',
+        );
+        return;
+      }
       // A collision still `Open` ignores a human ACCEPT, so escalate it first; the second
       // step is then the human accepting the escalation, which is what lifts the freeze.
-      for (const action of [
-        { type: 'escalate' as const, collisionId, reason: 'released by a human' },
-        { type: 'accept_escalation' as const, collisionId },
-      ]) {
-        const response = await requestIpc(state.socketPath, { type: 'human', action }, 5_000);
-        if (!response.ok) throw new Error(response.error);
+      for (const id of ids) {
+        for (const action of [
+          { type: 'escalate' as const, collisionId: id, reason: 'released by a human' },
+          { type: 'accept_escalation' as const, collisionId: id },
+        ]) {
+          const response = await requestIpc(state.socketPath, { type: 'human', action }, 5_000);
+          if (!response.ok) throw new Error(response.error);
+        }
       }
-      console.log(`Released ${collisionId}. Frozen agents may resume.`);
+      console.log(`Released ${ids.length} collision(s). Frozen agents may resume.`);
     });
 
   program
@@ -485,7 +503,11 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .action((options: { root: string; events?: string; json?: boolean }) => {
       const file =
         options.events ??
-        join(requiredState(resolveRoot(options.root)).p2pStorage, 'authority-state', 'events.jsonl');
+        join(
+          requiredState(resolveRoot(options.root)).p2pStorage,
+          'authority-state',
+          'events.jsonl',
+        );
       if (!existsSync(file)) {
         throw new Error(
           `No event log at ${file}. Only the authority laptop keeps one; run this there, or pass --events.`,
@@ -592,7 +614,9 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
       );
       if (!response.ok) throw new Error(response.error);
       if (!response.output) {
-        return void console.log('No plan yet. Run `agg plan --now` once two agents are in the room.');
+        return void console.log(
+          'No plan yet. Run `agg plan --now` once two agents are in the room.',
+        );
       }
       console.log(renderPlan(response.output as PlanOutput));
     });
@@ -704,11 +728,17 @@ export function buildProgram(invocationDirectory = process.env.INIT_CWD ?? proce
     .option('--text <sentence>', 'sentence to speak')
     .action(async (options: { text?: string }) => {
       const entry = fileURLToPath(new URL('../../tui/scripts/speech-test.js', import.meta.url));
-      const child = spawn(bareBinary(), [entry, ...(options.text ? ['--text', options.text] : [])], {
-        stdio: 'inherit',
-      });
+      const child = spawn(
+        bareBinary(),
+        [entry, ...(options.text ? ['--text', options.text] : [])],
+        {
+          stdio: 'inherit',
+        },
+      );
       await new Promise<void>((resolve, reject) => {
-        child.once('error', (error) => reject(new Error(`could not start speech test: ${error.message}`)));
+        child.once('error', (error) =>
+          reject(new Error(`could not start speech test: ${error.message}`)),
+        );
         child.once('exit', (code) => {
           if (code) process.exitCode = code;
           resolve();

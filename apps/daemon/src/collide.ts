@@ -116,7 +116,18 @@ export function detectCollisions(state: RoomState, event: Event): CollisionCandi
     // reducer (`applyFileWrite`), and counting it here would open a second
     // collision for one overlap. The gap this fills is the asymmetric case the
     // reducer cannot see: one session writing what another has merely read.
-    const fileHits = fileOverlap(write.files, session.readFiles ?? []);
+    // A declared intent has no FILE_WRITE for the reducer to open a write-vs-write collision from,
+    // so an INTENT is also compared against the files the peer writes or has claimed. That is what
+    // gives two agents who both claimed a file — and were both stopped for it — a collision to release.
+    const theirFiles =
+      event.payload.type === 'INTENT'
+        ? [
+            ...(session.readFiles ?? []),
+            ...(session.writeFiles ?? []),
+            ...(session.intent?.files ?? []),
+          ]
+        : (session.readFiles ?? []);
+    const fileHits = fileOverlap(write.files, theirFiles);
     const tier: CollisionTier | undefined =
       symbolHits.length > 0 ? 'PREDICTED' : fileHits.length > 0 ? 'FILE_OVERLAP' : undefined;
     if (!tier) continue;
@@ -132,13 +143,7 @@ export function detectCollisions(state: RoomState, event: Event): CollisionCandi
       symbols: tier === 'PREDICTED' ? (hits as SymbolKey[]) : [],
       writerSession: writer,
       affectedSessions: [session.sessionId],
-      detail: describe(
-        tier,
-        writer,
-        session.sessionId,
-        hits,
-        state.sessions[writer]?.intent?.task,
-      ),
+      detail: describe(tier, writer, session.sessionId, hits, state.sessions[writer]?.intent?.task),
       confidence: CONFIDENCE[tier] ?? 0.5,
     });
   }

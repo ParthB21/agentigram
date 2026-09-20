@@ -73,7 +73,8 @@ describe('freezeDenial', () => {
     expect(freezeDenial(r.state(), 'backend', path)).toMatch(/frozen/);
     expect(freezeDenial(r.state(), 'payments', path)).toMatch(/frozen/);
     expect(freezeDenial(r.state(), 'backend', 'src/other.ts')).toBeUndefined();
-    expect(freezeDenial(r.state(), 'someone-else', path)).toBeUndefined();
+    // Not a party, but the file is in play between two others, so it is off limits to them too.
+    expect(freezeDenial(r.state(), 'someone-else', path)).toMatch(/^STOP\./);
 
     const orchestrator = new Orchestrator(r.host, options);
     orchestrator.resume();
@@ -82,7 +83,7 @@ describe('freezeDenial', () => {
     expect(freezeDenial(r.state(), 'payments', path)).toBeUndefined();
   });
 
-  it('does not freeze on a file-overlap collision', () => {
+  it('freezes on a file-overlap collision too: tier 0 is no longer advisory', () => {
     const r = room();
     const state: RoomState = {
       ...r.state(),
@@ -90,7 +91,7 @@ describe('freezeDenial', () => {
         c1: { ...(r.state().collisions.c1 as CollisionState), tier: 'FILE_OVERLAP' },
       },
     };
-    expect(freezeDenial(state, 'backend', 'src/types/user.ts')).toBeUndefined();
+    expect(freezeDenial(state, 'backend', 'src/types/user.ts')).toMatch(/^STOP\./);
   });
 });
 

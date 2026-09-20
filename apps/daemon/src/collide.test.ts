@@ -160,6 +160,21 @@ describe('detectCollisions', () => {
     expect(detectCollisions(state, write)).toEqual([]);
   });
 
+  it('collides an intent with a file a peer merely claimed, so two claimants both get a collision', () => {
+    // payments never read the file; it only declared it would edit it.
+    const state = room({
+      payments: {
+        readFiles: [],
+        readSymbols: [],
+        intent: { task: 't', files: [WRITTEN], symbols: [] },
+      },
+    });
+    const claim = event({ type: 'INTENT', task: TASK, files: [WRITTEN], symbols: [] });
+    const [collision] = detectCollisions(state, claim);
+    expect(collision?.tier).toBe('FILE_OVERLAP');
+    expect(collision?.affectedSessions).toEqual(['payments']);
+  });
+
   it('does not collide a session with itself', () => {
     const solo = {
       ...emptyRoomState('hackathon'),

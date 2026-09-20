@@ -491,6 +491,7 @@ export class LaptopDaemon {
     if (input.hook_event_name === 'PreToolUse' || input.hook_event_name === 'BeforeTool') {
       const denial = this.editDenial(input);
       if (denial) {
+        this.claimFiles(this.toolPaths(input));
         return {
           ok: true,
           output: preToolDecision('deny', denial, this.state.host === 'gemini-cli'),
@@ -856,14 +857,48 @@ export class LaptopDaemon {
     if (events.length > 0) this.broadcast({ t: 'state', state: this.statusOutput() });
   }
 
+  private toolPaths(input: HookInput): string[] {
+    if (this.state.host === 'codex') return codexToolPaths(input as CodexHookInput);
+    if (this.state.host === 'gemini-cli') return geminiToolPaths(input as GeminiHookInput);
+    if (this.state.host === 'antigravity')
+      return antigravityToolPaths(input as AntigravityHookInput);
+    return claudeToolPaths(input as ClaudeHookInput);
+  }
+
+  /**
+   * Put the files a refused write was aimed at into this session's declared intent, so the
+   * authority sees the overlap and opens a collision. The refusal alone leaves no trace in the
+   * room: without this the two frozen agents would have nothing a human could release.
+   *
+   * Widens the intent rather than replacing it (the reducer overwrites it wholesale), and does
+   * nothing once the files are already claimed.
+   */
+  private claimFiles(paths: string[]): void {
+    const intent = this.roomState.sessions[this.state.sessionId]?.intent;
+    const claimed = new Set(intent?.files ?? []);
+    const fresh = paths.filter((path) => !claimed.has(path));
+    if (fresh.length === 0) return;
+    this.submit({
+      id: crypto.randomUUID(),
+      roomId: this.state.roomId,
+      actor: { engineerId: this.state.engineerId, sessionId: this.state.sessionId, kind: 'agent' },
+      source: 'hook',
+      payload: {
+        type: 'INTENT',
+        task: intent?.task ?? `editing ${fresh.join(', ')}`,
+        files: [...claimed, ...fresh],
+        symbols: intent?.symbols ?? [],
+      },
+    }).catch((error) =>
+      this.log.warn(
+        { err: error instanceof Error ? error.message : String(error) },
+        'could not publish file claim',
+      ),
+    );
+  }
+
   private editDenial(input: HookInput): string | undefined {
-    const paths = (() => {
-      if (this.state.host === 'codex') return codexToolPaths(input as CodexHookInput);
-      if (this.state.host === 'gemini-cli') return geminiToolPaths(input as GeminiHookInput);
-      if (this.state.host === 'antigravity')
-        return antigravityToolPaths(input as AntigravityHookInput);
-      return claudeToolPaths(input as ClaudeHookInput);
-    })();
+    const paths = this.toolPaths(input);
     if (this.managedAutonomy) {
       const denied = autonomousDenial({
         root: this.state.root,
