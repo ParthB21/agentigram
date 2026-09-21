@@ -2,175 +2,114 @@
 
 > Git knows what changed. Agentigram knows what everyone is trying to change — and what would break if it all landed right now.
 
+**🏆 Winner: Best Use of Tether — Best Sovereign App** (Hack the North)
+
+Coding agents are fast, and when several engineers each run one, they collide: one agent changes
+`User.id` from `number` to a UUID string while another, on a different laptop, is still writing
+checkout code against the old type. Nothing conflicts in Git until the damage is done.
+
 Agentigram is a coordination layer for coding agents running on different engineers' laptops. It
-observes what each agent reads and writes, computes which uncommitted changes would break each other
-(up to a speculative merge + typecheck), makes the agents negotiate a contract, compiles that contract
-into a check, and enforces it. A dashboard shows it all as live dialogue, tracks model performance and
-runs a play-money prediction league.
+observes what each agent reads and writes, works out which uncommitted changes would break each
+other, has the agents negotiate a contract, compiles that contract into a check, and enforces it.
 
-- `spec.md` — the source of truth. Read it first.
-- `CLAUDE.md` — repo layout, hard rules, conventions, who owns what.
-- `docs/decisions.md` — every choice the spec did not make, with versions checked.
-- `00-bootstrap.md` … `04-experience-metrics.md` — the prompts for M0 and for each of the four parts.
+## Sovereign by design
 
-## Status
+There is no server to trust, rent or lose. Everything runs on the laptops in the room.
 
-Working end to end across two laptops over real Hyperswarm P2P: encrypted rooms, a single-writer
-replicated event history, authoritative leases and fencing, Claude Code / Codex / Gemini CLI hooks,
-MCP tools, tier-0/1 collision detection, and a Bare/Pear terminal app that negotiates each collision
-with an authority-only model. Every laptop can render its own coding agent's fresh messages and
-coordination milestones with local QVAC speech.
+- **Peer-to-peer.** Laptops find each other over Hyperswarm using an encrypted invite. Room history is
+  a single-writer Hypercore replicated to every peer. No cloud coordinator is needed.
+- **On-device AI.** The room view is a [Pear](https://docs.pears.com) app built on Bare and
+  [QVAC](https://qvac.tether.io). A local model drafts contracts, explains collisions and even speaks
+  the room's messages aloud, with no API key and no network round-trip. Nothing to switch off when the
+  venue wifi dies.
+- **Your code stays yours.** Source and transcripts never leave the laptop. Only symbol keys, signature
+  hashes and short signature text are shared, and every outbound payload passes a secret redactor.
+- **Works with no model at all.** Every generated artefact has a deterministic fallback, so a laptop
+  that never downloaded weights still sees and negotiates every collision.
 
-The Durable Object/WebSocket coordinator remains available as an optional hosted transport.
+## How it works
 
-## The room view runs on Pear, and the model runs here
+1. **Observe.** Hooks for Claude Code, Codex and Gemini CLI, plus MCP tools and a file watcher, record
+   what each agent reads and writes, indexed by symbol.
+2. **Detect.** Deterministic set intersection over the symbol index (no LLM) finds collisions:
+   tier 0 same file, tier 1 same symbol, tier 2 semantic breakage such as a changed signature that
+   another agent depends on.
+3. **Allocate.** An orchestrator on the authority laptop assigns one owner per file, puts leases on
+   contested ones, and briefs each agent on what it owns and must not touch. The second agent to reach
+   a shared file is stopped at its own PreToolUse hook instead of discovered later in a merge. With
+   local Ollama it writes the prose; without one it falls back to a deterministic allocation. Files,
+   symbols and avoid-lists are always recomputed from what the room observed, so a hallucinated path
+   changes nothing.
+4. **Negotiate.** QVAC drafts a contract (`User.id: number → string (UUID v4)`, grammar-constrained so
+   the JSON always parses). A proposal is only sent when a human presses <kbd>enter</kbd>, because
+   it lands in a teammate's agent context on another machine.
+5. **Enforce.** The accepted contract is compiled into a check and verified.
+6. **Watch.** A native meeting-room UI and a web dashboard show the whole thing as live dialogue.
 
-`apps/tui` is a [Pear](https://docs.pears.com) app built on
-[`holepunchto/hello-pear-qvac-tui`](https://github.com/holepunchto/hello-pear-qvac-tui) — Bare,
-QVAC on-device inference, bare-tui, and peer-to-peer OTA updates. It shows every agent in the room,
-the collisions between them, and drafts the contract that resolves each one using
-`LLAMA_3_2_1B_INST_Q4_0` loaded on that machine. No API key, no network round-trip, nothing to
-switch off when the venue wifi dies.
-
-Detection never uses a model: the symbol index and read-set intersection decide *that* two agents
-collide. QVAC does the part set intersection cannot — writing the contract
-(`User.id: number → string (UUID v4)`, grammar-constrained so the JSON always parses) and putting it
-into a sentence. Every generated artefact has a deterministic fallback, so a laptop that never
-downloaded the weights still shows and negotiates every collision.
-
-A proposal is only sent when a human presses <kbd>enter</kbd>: it lands in a teammate's agent context
-on another machine, and a 1B model's output is not something to inject unreviewed.
-See [`apps/tui/README.md`](apps/tui/README.md).
-
-## Nobody has to announce anything
-
-An orchestrator on the authority laptop watches what every agent actually reads and writes and
-allocates the room from it: one owner per file, a lease on the contested ones, and a directed brief
-telling each agent what it owns and what it must not touch. The second agent to reach a shared file
-is then stopped at its own PreToolUse hook rather than discovered afterwards in a merge.
-
-It runs on local Ollama and falls back to a deterministic allocation when there is no model — and
-even with one, the model may only reorder ownership and write the prose. Files, symbols and the
-avoid list are recomputed from what the room observed, so a hallucinated path or session id changes
-nothing. `agg plan` prints the current allocation; see
-[`apps/daemon/README.md`](apps/daemon/README.md#the-orchestrator).
+Content from other agents is always injected as labelled, length-capped peer data, never as
+instructions, and agents never see presentation or market events.
 
 ## Quick start
 
-Install Node 22 or newer (`.nvmrc` pins 22), then run one setup command from the repository root:
+Requires Node 22 or newer.
 
 ```bash
-npm run setup
+npm run setup          # install workspace + Pear deps, download the local model, link `agg`
 ```
 
-Setup installs the pnpm workspace and Bare/Pear dependencies, downloads the local negotiation model,
-and globally links the short `agg` command. To defer the roughly 0.74 GB model download, use
-`npm run setup -- --skip-model`. Running an npm *script* at the root is safe; do not run
-`npm install` there because it does not link the workspace packages.
-
-The normal P2P workflow is then:
+Use `npm run setup -- --skip-model` to defer the ~0.74 GB model download. Run npm *scripts* at the
+root, not `npm install`, which does not link the workspace packages.
 
 ```bash
-agg create backend --host claude      # authority laptop; prints an invite
-agg join '<invite>' payments --host codex # each additional laptop
-agg start                             # launch the terminal UI (`agg tui` also works)
-agg speech-test                       # download/test QVAC speech and macOS audio
-agg run --autonomous --prompt 'Work on the assigned task' # managed Codex/Claude wakeups
-agg plan                              # who the orchestrator says owns what
-agg status                            # inspect the room/daemon
-agg leave                             # stop and restore local host configuration
+agg create backend --host claude            # authority laptop; prints an invite
+agg join '<invite>' payments --host codex   # every other laptop
+agg start                                   # terminal room view (also `agg tui`)
+agg run --autonomous --prompt 'Work on the assigned task'   # wake the coding agent on room messages
+agg plan                                    # who owns what
+agg status                                  # room/daemon health
+agg speech-test                             # test on-device speech
+agg leave                                   # stop and restore local host configuration
 ```
 
-Agentigram uses the active Codex, Claude Code, or Gemini environment when it can identify one. From
-a plain terminal, `--host` is required so it can never modify the wrong host's configuration. The
-current directory is the repository by default, so `--root .` is no longer needed. Session names are
-positional; the older `--session backend` form still works.
+Every laptop must be a clone of the same Git repository; the invite carries a fingerprint of
+`remote.origin.url`, and a clone with a different remote is refused. Codex hooks need a one-time
+`/hooks` trust after `create` or `join`; for Gemini, trust the workspace and check `/hooks list`.
 
-Run `agg run --autonomous` in a separate terminal on each Codex or Claude laptop. Incoming eligible
-room messages then resume that coding agent, and its reply is published back to the sender. The
-explicit flag is required because managed turns run unattended. Stop the runner with Ctrl+C; use
-`--new-session` when you intentionally want a fresh host conversation.
-
-After a checkout update, `agg setup` repairs dependencies and warms the model again. The original
-long-form scripts remain available for CI and troubleshooting. Run all checks with:
+### Try it on one laptop
 
 ```bash
-npx pnpm@10.34.5 check
+agg demo --scenario user-id-uuid --peers 4   # 4 peers, a plan, a lease denial, a tier-1 collision
+agg ui                                       # native desktop meeting room
+npx pnpm@10.34.5 dev                         # simulator + dashboard at localhost:3000
+npx pnpm@10.34.5 check                       # typecheck, lint, tests
 ```
-
-For a browser-dashboard development session instead of the P2P terminal product:
-
-```bash
-npx pnpm@10.34.5 dev            # simulator + localhost dashboard; Ctrl+C stops both
-```
-
-Other useful commands:
-
-```bash
-
-# One-laptop P2P demo: 4 peers, an allocated plan, a lease denial and a tier-1 collision
-agg demo --scenario user-id-uuid --peers 4
-
-# Native desktop meeting room (Electron; no browser server)
-agg ui
-
-# Build a portable desktop bundle for the current platform
-npx pnpm@10.34.5 --filter @agentigram/daemon ui:make
-```
-
-Every laptop must be a clone of the same Git repository — the invite carries a fingerprint derived
-from `remote.origin.url`, and a clone with a different remote is refused.
-
-`pnpm sim` flags: `--scenario`, `--port` (8787), `--room` (`hackathon`), `--speed`, `--no-play`, `--list`.
 
 ## Repo map
 
-| Path | Part | What |
-| --- | --- | --- |
-| `packages/protocol` | 1 | Zod schemas: event envelope, 42 payload types, wire messages, `RoomState`, symbol keys, visibility rules, MCP tool schemas. Shared contract. |
-| `packages/reducer` | 1 | Pure `reduce(state, event) → { state, effects }`. Sessions, heartbeat and intent are implemented; the rest is a skipped-test checklist. |
-| `packages/simulator` | 1 | Scenarios + mock coordinator (`/room/:roomId`). The `user-id-uuid` demo lives here. |
-| `packages/p2p` | 1 | Hyperswarm discovery, Protomux control channel, Corestore/Hypercore event replication, room invites. |
-| `packages/adapters` | 2 | Agent-host adapter registry, health tracking, secret redaction, peer-data wrapper. |
-| `packages/mcp` | 2 | MCP tool definitions and input validation, generated from protocol schemas. |
-| `apps/daemon` | 2 | `agentigram` CLI, P2P authority/peer runtime, Claude/Codex/Gemini hooks, MCP, watcher, tier-0/1 collision detection (`collide.ts`), and the native agent meeting room. |
-| `apps/tui` | Half 1 | **Bare/Pear room view.** QVAC on-device negotiation, bare-tui, Pear OTA. Installs with npm; outside the pnpm workspace. |
-| `packages/analysis`, `packages/contracts`, `apps/specmerge`, `apps/github`, `demo-repo` | 3 | Stubs with agreed signatures. |
-| `packages/league`, `packages/stats`, `packages/personas`, `apps/web` | 4 | Stubs, plus a dashboard shell that prints the raw event stream. |
-| `apps/coordinator` | 1 | Shared authority core plus the optional Cloudflare Durable Object/WebSocket transport. |
-
-## Prior art: OpenAgents
-
-We studied [OpenAgents](https://github.com/openagents-org/openagents) (Apache 2.0), an open-source
-"workspace" where many agents share threads, files and a browser. It solves a different problem —
-agents talking to each other and to humans — and has no notion of code impact, leases or contracts.
-Its architecture is still the best worked example we found of the plumbing Agentigram also needs:
-
-| OpenAgents | Idea | In Agentigram |
-| --- | --- | --- |
-| Event model: hierarchical names, wildcard subscriptions, visibility levels | Everything is an event; delivery is filtered by pattern *and* visibility | `matchesEventPattern`, `subscriptionMatches`, `isAgentVisible` (`packages/protocol`) |
-| Adapter registry (`adapters/index.js`, `registry/*.json`) | One adapter per agent host, looked up by name | `createAdapter`, `HOST_CATALOG`, degraded mode (`packages/adapters`) |
-| `BaseAdapter` heartbeat threshold | Don't flap red on one blip | `HealthTracker` |
-| `redactSecrets` | Scrub credentials from anything quoted or sent | `redactSecrets`, `redactPayload` (tightened for structured payloads) |
-| Pinned decision log truncation | Fit context into a budget without cutting lines | `truncateLines`, `wrapPeerData` (labelled, capped, breakout-proof peer content) |
-| `daemon.js` restart loop | Exponential backoff, give up after 10 crashes | `Supervisor` (counter resets after a healthy run) |
-| Adapter cursor persistence and stale-message skipping | Resume after downtime without acting on old instructions | `CursorStore`, `partitionStale`, `RoomClient` resume via `HELLO.lastSeq` |
-| `buildToolDefs` in `mcp-server.js` | Tool definitions as data, individually switchable | `buildToolDefs`, `parseToolCall` (`packages/mcp`) |
-
-We did **not** copy OpenAgents source wholesale. The redaction patterns and the truncation approach
-are adapted and rewritten in TypeScript; attribution: OpenAgents © its contributors, Apache-2.0.
-Deliberately left out: its workspace REST API, channels/forum/wiki mods, Studio UI, launcher TUI,
-per-host CLI subprocess bridges and Python SDK. Full mapping and deviations: `docs/decisions.md`.
+| Path | What |
+| --- | --- |
+| `apps/tui` | Bare/Pear room view: QVAC negotiation and speech, bare-tui, peer-to-peer OTA updates. Installs with npm. |
+| `apps/daemon` | The `agg` CLI, P2P authority/peer runtime, agent hooks, MCP, watcher, collision detection, orchestrator, desktop room. |
+| `apps/coordinator` | Transport-free room core, plus an optional Cloudflare Durable Object/WebSocket host. |
+| `apps/web` | Next.js dashboard. |
+| `apps/specmerge`, `apps/github` | Speculative-merge worker and GitHub App checks. |
+| `packages/protocol` | Zod schemas for events, wire messages and room state; symbol keys; visibility rules. |
+| `packages/reducer` | Pure `(state, event) → { state, effects }`. |
+| `packages/p2p` | Hyperswarm discovery, Protomux control channel, Hypercore replication, invites. |
+| `packages/adapters`, `packages/mcp` | Agent-host adapters, redaction, peer-data wrapping, MCP tools. |
+| `packages/analysis`, `packages/contracts` | Symbol index, API deltas, contract compiler. |
+| `packages/league`, `packages/stats`, `packages/personas` | Prediction league, model statistics, persona dialogue. |
+| `packages/simulator`, `demo-repo` | Scripted scenarios with a mock coordinator, and the demo app they run against. |
 
 ## Operational notes
 
-- The authority laptop is the only writer. If it disappears, peers keep their replicated history
-  but become read-only; v1 does not elect a replacement automatically.
-- Codex project hooks require review. Run `/hooks` in Codex after `create` or `join` and trust the
-  generated Agentigram hook definitions.
-- Gemini CLI hooks and the `agentigram` MCP server are merged into `.gemini/settings.json`. Start
-  Gemini from the repository, trust the workspace, then verify them with `/hooks list` and
-  `/mcp list`.
-- Source and transcripts stay local. Outbound structured payloads are validated and redacted.
-- `openagents-develop/` is a read-only reference checkout and is never committed. alice
-bob
+- The authority laptop is the only writer. If it disappears, peers keep their replicated history but
+  become read-only; there is no automatic failover yet.
+- An optional hosted Durable Object/WebSocket coordinator exists for setups that prefer a server.
+
+## Credits
+
+The room view is a fork of [`holepunchto/hello-pear-qvac-tui`](https://github.com/holepunchto/hello-pear-qvac-tui).
+Several plumbing patterns (event visibility, adapter registry, redaction, restart supervision) were
+adapted from [OpenAgents](https://github.com/openagents-org/openagents) (Apache 2.0); see
+`docs/decisions.md`.
