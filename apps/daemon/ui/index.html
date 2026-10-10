@@ -52,13 +52,6 @@
       <symbol id="icon-chevron" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6" /></symbol>
     </svg>
 
-    <div class="ambient" aria-hidden="true">
-      <span class="ambient-orb orb-one"></span>
-      <span class="ambient-orb orb-two"></span>
-      <span class="ambient-orb orb-three"></span>
-      <span class="ambient-noise"></span>
-    </div>
-
     <header class="titlebar">
       <div class="window-drag brand">
         <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
@@ -81,8 +74,8 @@
       <section class="meeting-surface" aria-labelledby="stageTitle">
         <div class="stage-heading">
           <div>
-            <span class="eyebrow">Live workspace</span>
-            <h1 id="stageTitle">Agents in session</h1>
+            <span class="eyebrow">Collaboration workspace</span>
+            <h1 id="stageTitle">Your agent room</h1>
           </div>
           <div class="stage-summary" id="counts">Waiting for the room...</div>
         </div>
@@ -90,8 +83,8 @@
         <div class="agent-stage" id="agentStage" aria-live="polite">
           <div class="empty-room" id="emptyRoom">
             <span class="empty-signal"><i></i><i></i><i></i></span>
-            <strong>The room is getting ready</strong>
-            <span>Agents will appear here as they join.</span>
+            <strong>Your workspace, in sync</strong>
+            <span>Connect a local daemon to see agents, their work and shared decisions.</span>
           </div>
         </div>
 
@@ -116,8 +109,8 @@
       <aside class="inspector" id="inspector" aria-label="Meeting details">
         <div class="inspector-heading">
           <div>
-            <span class="eyebrow">Room context</span>
-            <h2>Conversation</h2>
+            <span class="eyebrow">Shared context</span>
+            <h2>Room transcript</h2>
           </div>
           <button class="icon-button mobile-close" id="closeInspector" type="button" aria-label="Close details">
             <span aria-hidden="true">&times;</span>
@@ -133,8 +126,8 @@
         <section class="inspector-panel dialogue-panel" id="conversationPanel" role="tabpanel" aria-labelledby="conversationTab">
           <div class="empty-conversation" id="emptyConversation">
             <span class="conversation-orb"><i></i><i></i><i></i></span>
-            <strong>Quiet for now</strong>
-            <span>Agent dialogue and spoken updates will collect here.</span>
+            <strong>The conversation starts here</strong>
+            <span>Updates appear as your agents coordinate their work.</span>
           </div>
           <ol class="dialogue-list" id="dialogue"></ol>
         </section>
