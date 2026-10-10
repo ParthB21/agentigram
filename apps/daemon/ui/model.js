@@ -28,12 +28,6 @@ export function initials(value) {
   return `${parts[0][0]}${parts.at(-1)[0]}`.toUpperCase();
 }
 
-export function stableHue(value) {
-  let hash = 0;
-  for (const char of String(value)) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  return 185 + (Math.abs(hash) % 105);
-}
-
 export function symbolName(key) {
   const value = String(key || '');
   const hash = value.indexOf('#');
@@ -84,7 +78,7 @@ export function deriveAgentView(state, agent, speechState = 'idle', muted = fals
     id,
     name: displayName(id),
     initials: initials(id),
-    hue: stableHue(id),
+    brand: agentBrand(agent),
     host: agentRuntime(agent),
     task,
     intent: activity && agent.intent?.task !== activity.what ? agent.intent?.task : undefined,
@@ -97,6 +91,14 @@ export function deriveAgentView(state, agent, speechState = 'idle', muted = fals
     muted,
     label,
   };
+}
+
+export function agentBrand(agent) {
+  const host = String(agent?.host ?? '').toLowerCase();
+  if (host.startsWith('claude')) return 'claude';
+  if (host.startsWith('codex')) return 'codex';
+  if (host.startsWith('gemini')) return 'gemini';
+  return null;
 }
 
 function agentRuntime(agent) {

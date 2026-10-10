@@ -7,7 +7,7 @@ import {
   initials,
   latestCollision,
   speakerForFrame,
-  stableHue,
+  agentBrand,
   symbolName,
 } from './model.js';
 
@@ -52,9 +52,14 @@ test('display helpers turn session ids into stable identities', () => {
   assert.equal(displayName('payments_agent'), 'Payments Agent');
   assert.equal(initials('payments_agent'), 'PA');
   assert.equal(initials('backend'), 'BA');
-  assert.equal(stableHue('backend'), stableHue('backend'));
-  assert.notEqual(stableHue('backend'), stableHue('payments'));
   assert.equal(symbolName('src/types/user.ts#User.id:property'), 'User.id');
+});
+
+test('brand marks follow the runtime rather than the session name', () => {
+  assert.equal(agentBrand({ sessionId: 'codex-helper', host: 'claude-code' }), 'claude');
+  assert.equal(agentBrand({ host: 'codex' }), 'codex');
+  assert.equal(agentBrand({ host: 'gemini-cli' }), 'gemini');
+  assert.equal(agentBrand({ model: 'gpt-5', host: 'unknown' }), null);
 });
 
 test('latestCollision selects the newest unresolved collision', () => {

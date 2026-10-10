@@ -1,4 +1,4 @@
-import { clockTime, frameCategory, initials, speakerForFrame } from './model.js';
+import { agentBrand, clockTime, frameCategory, initials, speakerForFrame } from './model.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -24,7 +24,7 @@ export function createAgentTile(view, onToggleVoice) {
   top.append(status, voice);
 
   const avatarWrap = element('div', 'agent-avatar-wrap');
-  const avatar = element('span', 'agent-avatar', view.initials);
+  const avatar = element('span', 'agent-avatar');
   const wave = element('span', 'speech-wave');
   for (let index = 0; index < 5; index += 1) wave.append(document.createElement('i'));
   avatarWrap.append(avatar, wave);
@@ -38,6 +38,7 @@ export function createAgentTile(view, onToggleVoice) {
 
   tile.append(top, avatarWrap, name, model, task, lease);
   tile._agentRefs = {
+    avatar,
     status,
     statusText: status.lastElementChild,
     voice,
@@ -56,7 +57,7 @@ export function createAgentTile(view, onToggleVoice) {
 
 export function updateAgentTile(tile, view) {
   const refs = tile._agentRefs;
-  tile.style.setProperty('--agent-hue', String(view.hue));
+  updateAvatar(refs.avatar, view.brand, view.initials);
   tile.classList.toggle('is-working', view.working && view.speechState === 'idle');
   tile.classList.toggle('is-speaking', view.speechState === 'speaking');
   tile.classList.toggle(
@@ -97,14 +98,14 @@ export function setTileEnergy(tile, energy) {
   }
 }
 
-export function createDialogueLine(frame) {
+export function createDialogueLine(frame, agent) {
   const speaker = speakerForFrame(frame);
   const item = element('li', 'dialogue-line');
   item.dataset.seq = String(frame.seq ?? '');
   item.dataset.speaker = speaker;
-  item.style.setProperty('--dialogue-hue', String(hueFor(speaker)));
 
-  const avatar = element('span', 'dialogue-avatar', initials(speaker));
+  const avatar = element('span', 'dialogue-avatar');
+  updateAvatar(avatar, agentBrand(agent), initials(speaker));
   const body = element('div', 'dialogue-body');
   const meta = element('div', 'dialogue-meta');
   meta.append(element('strong', '', titleCase(speaker)), element('time', '', clockTime()));
@@ -192,10 +193,22 @@ function element(tag, className = '', value) {
   return node;
 }
 
-function hueFor(value) {
-  let hash = 0;
-  for (const char of String(value)) hash = (hash * 31 + char.charCodeAt(0)) | 0;
-  return 185 + (Math.abs(hash) % 105);
+function updateAvatar(avatar, brand, fallback) {
+  if (!brand) {
+    avatar.textContent = fallback;
+    delete avatar.dataset.brand;
+    return;
+  }
+  if (avatar.dataset.brand === brand) return;
+  const image = document.createElement('img');
+  image.src = `assets/${brand}.svg`;
+  image.alt = `${displayBrand(brand)} logo`;
+  avatar.replaceChildren(image);
+  avatar.dataset.brand = brand;
+}
+
+function displayBrand(brand) {
+  return brand === 'claude' ? 'Claude' : brand === 'codex' ? 'Codex' : 'Gemini';
 }
 
 function titleCase(value) {
