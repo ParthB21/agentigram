@@ -26,9 +26,7 @@ const ACTIVITY_HIDDEN = new Set(['HEARTBEAT']);
 document.body.dataset.platform = window.agentigram.platform || 'unknown';
 const elements = Object.fromEntries(
   [
-    'roomName',
-    'roomId',
-    'mode',
+    'projectName',
     'link',
     'counts',
     'meetingClock',
@@ -151,7 +149,8 @@ function applyEvent(frame) {
     if (room.dialogueFrames.length > MAX_DIALOGUE) {
       room.dialogueFrames.splice(0, room.dialogueFrames.length - MAX_DIALOGUE);
     }
-    const line = createDialogueLine(frame);
+    const agent = room.state?.agents?.find((candidate) => candidate.sessionId === speakerForFrame(frame));
+    const line = createDialogueLine(frame, agent);
     elements.dialogue.append(line);
     trimChildren(elements.dialogue, MAX_DIALOGUE);
     elements.emptyConversation.hidden = true;
@@ -174,12 +173,7 @@ function applyEvent(frame) {
 function renderHeader(state) {
   const connected = state.transport === 'connected';
   const connectionText = connected ? 'Connected' : state.transport || 'Offline';
-  elements.roomId.textContent = state.roomId || 'Agent room';
-  elements.roomName.textContent = state.sessionId
-    ? `${displayName(state.sessionId)} workspace`
-    : 'Agent room';
-  elements.mode.textContent = state.mode || '';
-  elements.mode.hidden = !state.mode;
+  if (state.projectName) elements.projectName.textContent = `Working in ${state.projectName}`;
   elements.link.className = `connection-pill ${connected ? 'connected' : 'offline'}`;
   elements.link.lastElementChild.textContent = titleCase(connectionText);
 
@@ -244,7 +238,7 @@ function renderCollision(state) {
   const affected = [collision.writerSession, ...(collision.affectedSessions ?? [])];
   const people = affected.map(displayName).join(' and ');
   const symbols = (collision.symbols ?? []).map(symbolName).join(', ');
-  const tier = titleCase(String(collision.tier || 'collision').replaceAll('_', ' '));
+  const tier = `${titleCase(String(collision.tier || 'collision').toLowerCase().replaceAll('_', ' '))} conflict`;
   const negotiation = negotiationFor(state, collision.collisionId);
   const contract = negotiation?.contract;
 

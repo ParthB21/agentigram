@@ -99,7 +99,11 @@ function trusted(event) {
 
 async function status() {
   const response = await requestDaemon({ type: 'status' });
-  return response.ok ? response.output : { transport: 'closed', error: response.error };
+  return withProjectName(response.ok ? response.output : { transport: 'closed', error: response.error });
+}
+
+function withProjectName(state) {
+  return { ...state, projectName: path.basename(root) };
 }
 
 function broadcast(channel, payload) {
@@ -141,7 +145,10 @@ function subscribe() {
       if (line.trim()) {
         try {
           const frame = JSON.parse(line);
-          if (isRoomFrame(frame)) broadcast('agentigram:frame', frame);
+          if (isRoomFrame(frame)) {
+            if (frame.t === 'state') frame.state = withProjectName(frame.state);
+            broadcast('agentigram:frame', frame);
+          }
         } catch {
           // A malformed frame is not worth taking the window down for.
         }
@@ -217,7 +224,7 @@ function createWindow() {
             titleBarStyle: 'hidden',
             titleBarOverlay: {
               color: '#00000000',
-              symbolColor: '#202e43',
+              symbolColor: '#171717',
               height: 64,
             },
           }
