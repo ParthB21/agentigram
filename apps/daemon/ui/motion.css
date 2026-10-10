@@ -15,12 +15,12 @@
 @media (max-width:1050px) {
   .workspace { grid-template-columns:minmax(0,1fr) 300px; gap:16px; padding-inline:18px; }
   .meeting-title { display:none; }.titlebar { grid-template-columns:1fr auto; }
-  .stage-summary { max-width:170px; font-size:10px; }.stage-heading h1 { font-size:24px; }
+  .stage-summary { max-width:170px; font-size:11px; }.stage-heading h1 { font-size:24px; }
   .agent-tile { padding-inline:20px; }.agent-name { font-size:20px; }
 }
 @media (max-width:820px) {
   .workspace { display:block; }.meeting-surface { height:100%; }
-  .inspector { position:fixed; z-index:40; top:86px; right:18px; bottom:96px; width:340px; opacity:0; visibility:hidden; pointer-events:none; transform:translateX(15px); box-shadow:0 12px 36px #202e4320; transition:opacity 180ms,transform 180ms,visibility 180ms; }
+  .inspector { position:fixed; z-index:40; top:86px; right:18px; bottom:96px; width:340px; border:0; opacity:0; visibility:hidden; pointer-events:none; transform:translateX(15px); box-shadow:0 12px 36px #202e4320; transition:opacity 180ms,transform 180ms,visibility 180ms; }
   .inspector.open { opacity:1; visibility:visible; pointer-events:auto; transform:translateX(0); }
   .mobile-close,.details-toggle { display:grid; }
 }
@@ -29,7 +29,10 @@
   .workspace { padding-top:16px; padding-bottom:82px; }.stage-heading { padding-bottom:14px; }
   .stage-heading h1 { font-size:22px; }.agent-stage { grid-auto-rows:minmax(165px,1fr); }
   .agent-tile { padding-top:42px; padding-bottom:28px; }.agent-avatar-wrap { width:36px; height:36px; margin:8px 0; }
-  .agent-avatar { border-radius:10px; font-size:17px; }.agent-name { font-size:17px; }.agent-task { margin-top:6px; font-size:11px; }
-  .agent-top { top:10px; }.agent-model { font-size:11px; }.dock-shell { bottom:12px; }
+  .agent-avatar { border-radius:11px; font-size:17px; }.agent-name { font-size:17px; }.agent-task { margin-top:6px; font-size:11px; }
+  .agent-top { top:11px; }.agent-model { font-size:11px; }.dock-shell { bottom:12px; }
 }
-@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation:none !important; transition:none !important; } }
+@media (prefers-reduced-motion:reduce) {
+  .agent-tile.is-working .task-pulse,.agent-tile.is-speaking .speech-wave i,.agent-tile.is-synthesizing .speech-wave i,.live-caption:not([hidden]),.collision-banner:not([hidden]),.negotiation-card:not([hidden]),.toast { animation:none; }
+  .workspace,.segment-indicator,.dock-launcher,.control-dock,.dock-control,.agent-tile,.speech-wave,.toast.leaving,.presenting .dock-shell,.inspector { transition:none; }
+}

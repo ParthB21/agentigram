@@ -1,7 +1,7 @@
 :root {
   color-scheme: light;
   --bg: #edf1f6; --surface: #fff; --surface-soft: #f6f8fb;
-  --ink: #202e43; --ink-soft: #45546b; --muted: #65748a; --faint: #758398;
+  --ink: #202e43; --ink-soft: #45546b; --muted: #58677c; --faint: #5e6c80;
   --line: #d7dfe9; --line-bright: #b6c5da; --blue: #315dd8; --cyan: #315dd8;
   --green: #267159; --amber: #986016; --red: #b23c49;
   --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px;
@@ -34,7 +34,7 @@ body[data-platform="linux"] .titlebar { padding-left:24px; }
 .brand-copy span { overflow:hidden; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; max-width:200px; }
 .meeting-title { gap:8px; max-width:230px; margin:0 12px; color:var(--muted); font:11px/1.4 var(--mono); }
 #roomId { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.role-pill,.severity-pill { padding:4px 6px; border-radius:4px; background:var(--surface-soft); color:var(--muted); font-size:10px; }
+.role-pill,.severity-pill { padding:4px 6px; border-radius:4px; background:var(--surface-soft); color:var(--muted); font-size:11px; }
 .title-status { justify-content:flex-end; gap:12px; -webkit-app-region:no-drag; }
 .connection-pill { display:inline-flex; align-items:center; gap:7px; font-size:12px; color:var(--muted); }
 .connection-pill i { width:7px; height:7px; border-radius:50%; background:var(--amber); }
@@ -42,12 +42,11 @@ body[data-platform="linux"] .titlebar { padding-left:24px; }
 .connection-pill.connected i { background:var(--green); }
 .connection-pill.offline i { background:var(--red); }
 .meeting-clock { color:var(--faint); font:11px/1 var(--mono); font-variant-numeric:tabular-nums; }
-.workspace { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; height:calc(100% - 68px); padding:24px 24px 90px; transition:padding-bottom 180ms ease; }
+.workspace { display:grid; grid-template-columns:minmax(0,1fr) 340px; gap:20px; height:calc(100% - 68px); padding:24px 24px 90px; }
 body:has(.dock-shell:not(.open)) .workspace { padding-bottom:74px; }
 .meeting-surface { position:relative; display:flex; min-width:0; min-height:0; flex-direction:column; }
 .stage-heading,.inspector-heading { display:flex; flex:0 0 auto; align-items:center; justify-content:space-between; gap:16px; }
 .stage-heading { padding:0 2px 22px; }
-.eyebrow { display:block; margin-bottom:5px; color:var(--muted); font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; }
 .stage-heading h1 { font-size:28px; font-weight:650; letter-spacing:-.04em; line-height:1.2; }
 .stage-summary { max-width:220px; color:var(--muted); font:11px/1.7 var(--mono); text-align:right; }
 .inspector { display:flex; min-width:0; min-height:0; flex-direction:column; overflow:hidden; border:1px solid var(--line); border-radius:var(--radius-lg); background:var(--surface); }
@@ -65,13 +64,13 @@ body:has(.dock-shell:not(.open)) .workspace { padding-bottom:74px; }
 .inspector-panel { min-height:0; flex:1 1 auto; overflow:auto; scrollbar-width:thin; }
 .dock-shell { position:fixed; z-index:30; bottom:18px; left:50%; display:grid; justify-items:center; align-items:end; transform:translateX(-50%); }
 .dock-shell > * { grid-area:1/1; }
-.dock-launcher { display:grid; width:48px; height:42px; place-items:center; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink-soft); box-shadow:0 4px 16px #202e4310; transition:opacity 150ms,transform 180ms,visibility 180ms; }
+.dock-launcher { display:grid; width:48px; height:42px; place-items:center; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink-soft);  transition:opacity 150ms,transform 180ms,visibility 180ms; }
 .dock-launcher:hover { color:var(--blue); border-color:var(--line-bright); }
-.control-dock { position:relative; display:flex; align-items:center; gap:5px; height:64px; padding:7px 10px; border:1px solid var(--line); border-radius:16px; background:var(--surface); box-shadow:0 8px 26px #202e4312; transform-origin:bottom center; transition:opacity 150ms,transform 180ms,visibility 180ms; }
+.control-dock { position:relative; display:flex; align-items:center; gap:5px; height:64px; padding:7px 11px; border:1px solid var(--line); border-radius:16px; background:var(--surface);  transform-origin:bottom center; transition:opacity 150ms,transform 180ms,visibility 180ms; }
 .dock-shell:not(.open) .control-dock { opacity:0; visibility:hidden; transform:translateY(8px) scale(.96); pointer-events:none; }
 .dock-shell.open .dock-launcher { opacity:0; visibility:hidden; pointer-events:none; }
 .dock-close { position:absolute; top:-8px; right:-8px; display:grid; width:24px; height:24px; place-items:center; border:1px solid var(--line); border-radius:50%; background:var(--surface); color:var(--muted); }
-.dock-control { display:grid; min-width:60px; height:48px; place-items:center; gap:1px; padding:4px 9px; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:10px; transition:background 150ms,color 150ms; }
+.dock-control { display:grid; min-width:60px; height:48px; place-items:center; gap:1px; padding:4px 9px; border:0; border-radius:8px; background:transparent; color:var(--muted); font-size:11px; transition:background 150ms,color 150ms; }
 .dock-control:hover { background:var(--surface-soft); color:var(--ink); }
 .dock-control.active { background:#eaf0ff; color:var(--blue); }
 .dock-control:active { background:#dce6ff; }
@@ -81,5 +80,5 @@ body:has(.dock-shell:not(.open)) .workspace { padding-bottom:74px; }
 .volume-control { display:flex; align-items:center; gap:8px; width:114px; padding:0 9px; color:var(--muted); }
 .volume-control input { width:76px; accent-color:var(--blue); cursor:pointer; }
 .toast-region { position:fixed; z-index:60; top:80px; right:24px; display:grid; width:min(330px,calc(100vw - 48px)); gap:8px; pointer-events:none; }
-.toast { padding:12px 16px; border:1px solid var(--line); border-radius:10px; background:var(--surface); box-shadow:0 8px 25px #202e4315; color:var(--ink-soft); }
+.toast { padding:12px 16px; border:1px solid var(--line); border-radius:11px; background:var(--surface);  color:var(--ink-soft); }
 .toast.error { border-color:var(--red); }
