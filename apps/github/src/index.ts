@@ -45,8 +45,8 @@ export function parseAttribution(message: string, commit = ''): RunAttribution {
   }
   return {
     commit,
-    runId: trailers.get('agentigram-run') ?? trailers.get('agentigram-run'),
-    model: trailers.get('agentigram-model') ?? trailers.get('agentigram-model'),
+    runId: trailers.get('agentigram-run'),
+    model: trailers.get('agentigram-model'),
   };
 }
 
