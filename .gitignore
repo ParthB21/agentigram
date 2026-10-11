@@ -27,7 +27,5 @@ openagents-develop/
 # and installs with npm.
 /package-lock.json
 
-# Local visual verification
-.impeccable/review/
-.impeccable/mocks/
-.impeccable/build/
+# Local design-tool artifacts
+.impeccable/
