@@ -4,7 +4,7 @@
 
 ## Platform
 
-web
+desktop (Electron)
 
 ## Product Purpose
 
