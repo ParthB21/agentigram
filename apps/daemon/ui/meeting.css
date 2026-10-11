@@ -71,11 +71,10 @@
 .activity-text { display:block; margin-top:3px; color:var(--muted); font-size:11px; line-height:1.6; overflow-wrap:anywhere; user-select:text; }
 .activity-seq { color:var(--faint); font:11px/1.5 var(--mono); }
 .negotiation-card { flex:0 0 auto; max-height:50%; overflow:auto; margin:12px; padding:16px; border:1px solid #a3a3a3; border-radius:11px; background:#f7f7f7; }
-.negotiation-title { display:flex; align-items:flex-start; justify-content:space-between; gap:11px; }
-.negotiation-title { flex-wrap:wrap; }.severity-pill { white-space:nowrap; }
+.negotiation-title { display:flex; align-items:flex-start; justify-content:space-between; flex-wrap:wrap; gap:11px; }
 .negotiation-title h3 { font-size:14px; font-weight:600; overflow-wrap:anywhere; }
 .negotiation-card > p { margin-top:8px; color:var(--ink-soft); font-size:12px; user-select:text; }
-.severity-pill { color:var(--amber); background:#e8e8e8; }
+.severity-pill { padding:4px 6px; border-radius:4px; background:#e8e8e8; color:var(--amber); font-size:11px; white-space:nowrap; }
 .contract-diff { margin-top:12px; padding:12px; border:1px solid #d0d0d0; border-radius:8px; background:var(--surface); }
 .contract-label { display:block; color:var(--muted); font-size:11px; }
 .contract-diff code { display:block; margin:5px 0 8px; overflow-wrap:anywhere; color:var(--accent); font:11px/1.6 var(--mono); user-select:text; }
