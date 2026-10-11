@@ -49,7 +49,6 @@ keys: a use of `Base.id` is also a use of `Admin.id`.
   to resolve symbols. `atMs` defaults to `Date.now()`; pass it explicitly to stay deterministic.
 - `RepoIndex` grew (`modules`, `references`, per-symbol `kind`/`path`/`line`); `symbols[key].signature`
   and `.signatureHash` are unchanged.
-- `apiDelta`, `resolveIntent` and `assessImpact` still throw `NotImplementedError` (M2).
 
 ## Measured (demo repo, this machine)
 

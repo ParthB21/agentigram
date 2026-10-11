@@ -7,7 +7,7 @@ import {
 } from '@agentigram/protocol';
 
 /**
- * Work allocation across the room (spec → "Leases, not locks", CLAUDE.md rule 4).
+ * Work allocation across the room (spec → "Leases, not locks").
  *
  * Detection tells the room a conflict has *happened*. Allocation is the other half: decide up
  * front who owns which file, so the second agent is stopped at its PreToolUse hook rather than

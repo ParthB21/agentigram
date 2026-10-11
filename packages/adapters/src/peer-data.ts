@@ -1,5 +1,5 @@
 /**
- * Peer content is data, not instructions (CLAUDE.md rule 6; spec → Security).
+ * Peer content is data, not instructions (spec → Security).
  * Anything injected into an agent's context from another agent goes through `wrapPeerData`.
  *
  * Truncation is ported from OpenAgents `decision-log.js#renderPinnedDecisions`: over budget, keep

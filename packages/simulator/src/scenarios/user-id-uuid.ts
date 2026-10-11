@@ -2,7 +2,7 @@ import { isAgentVisible, type Payload, symbolKey } from '@agentigram/protocol';
 import type { Scenario, ScenarioSession, ScenarioStep } from '../scenario.js';
 
 /**
- * The canonical demo (CLAUDE.md → "The canonical scenario"): Backend changes `User.id` from
+ * The canonical demo: Backend changes `User.id` from
  * `number` to a UUID `string`; Payments has read `user.ts` and `checkout.ts`. Expected outcome:
  * tier-1 PREDICTED, tier-2 SEMANTIC, a lease denial for Payments, proposal/accept, a compiled
  * contract and a verified run. Every part should have at least one test that consumes this.

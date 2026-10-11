@@ -1,8 +1,8 @@
 import type { ApiChange, CollisionTier, SymbolKey, SymbolKind } from '@agentigram/protocol';
 
 /**
- * One exported symbol or member. Only keys, signatures and hashes ever leave the laptop
- * (CLAUDE.md rule 7); `path` and `line` are local navigation aids.
+ * One exported symbol or member. Only keys, signatures and hashes ever leave the laptop;
+ * `path` and `line` are local navigation aids.
  */
 export type IndexedSymbol = {
   key: SymbolKey;

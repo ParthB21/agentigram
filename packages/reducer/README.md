@@ -4,4 +4,4 @@
 
 Pure reducer: (RoomState, Event) -> { state, effects }. No I/O.
 
-See `CLAUDE.md` (repo layout, hard rules) and `spec.md` (source of truth).
+See [`spec.md`](../../spec.md) for architecture and protocol behavior.

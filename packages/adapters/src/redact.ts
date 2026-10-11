@@ -1,5 +1,5 @@
 /**
- * Secret redaction (CLAUDE.md rule 7: run on every outbound payload).
+ * Secret redaction on every outbound payload.
  * Ported from OpenAgents `adapters/utils.js#redactSecrets`, with two changes:
  *  - the long-opaque-token catch-all is opt-in, because payloads legitimately carry 40+ char
  *    commit SHAs and signature hashes;

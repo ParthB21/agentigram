@@ -13,8 +13,8 @@ export type OllamaOptions = { host?: string; model?: string; timeoutMs?: number 
 
 /**
  * Local Ollama over its `/api/chat` endpoint with structured output (`format` = a JSON schema,
- * `stream: false`). Ollama is on this laptop, so no source or transcript leaves it (CLAUDE.md
- * rule 7). Every caller has a deterministic fallback, so a failure here is thrown, never hidden.
+ * `stream: false`). Ollama is on this laptop, so no source or transcript leaves it. Every caller
+ * has a deterministic fallback, so a failure here is thrown, never hidden.
  */
 export class OllamaClient implements Llm {
   private readonly host: string;

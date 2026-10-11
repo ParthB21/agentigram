@@ -77,7 +77,7 @@ const DraftSchema = z.object({
  *
  * The model (local Ollama) only reorders ownership and writes the prose. Ownership is recomputed
  * from observed facts afterwards, so a model that hallucinates a file, a session or a symbol key
- * changes nothing (CLAUDE.md rule 4), and a laptop with no model still plans.
+ * changes nothing, and a laptop with no model still plans.
  */
 export class Planner {
   private readonly llm: Llm | undefined;

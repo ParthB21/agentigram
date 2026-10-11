@@ -96,7 +96,7 @@ const CoreLogRequestSchema = z.object({
   limit: z.number().int().positive().max(1000).optional(),
 });
 /**
- * Dialogue rendered by the local QVAC model. `PERSONA_LINES` is dashboard-only (CLAUDE.md rule 5),
+ * Dialogue rendered by the local QVAC model. `PERSONA_LINES` is dashboard-only,
  * so an on-device model's prose reaches the room view and never an agent's context.
  */
 const NarrateRequestSchema = z.object({

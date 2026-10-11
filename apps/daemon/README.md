@@ -58,7 +58,7 @@ answer, so a laptop with no model behaves the same way with plainer words.
   contested paths until the negotiation is `Accepted`.
 
 The model may reorder ownership and write the prose; the file, symbol and avoid lists are
-recomputed from observed state afterwards (CLAUDE.md rule 4), so a hallucinated path, session or
+recomputed from observed state afterwards, so a hallucinated path, session or
 symbol key changes nothing.
 
 | Variable | Effect |
@@ -106,7 +106,6 @@ payloads captured from a live Claude Code session (capturing real ones is still 
 - **Symbols:** `SymbolReader` (`src/symbol-reader.ts`) keeps one `@agentigram/analysis` `Indexer` per
   repo and turns a Read into symbol keys. The index is warmed at `SessionStart`, so a hook never pays for
   a cold TypeScript program; a repo with no `tsconfig.json` degrades to FILE_READ without symbols.
-- **`apiDelta`** is still Part 3's M2 stub; the watcher logs it as unavailable and emits no `API_DELTA`.
 - **Authority:** the room creator is the sole sequencer and lease authority. A capability-bearing
   invite authenticates peers; authority loss is a read-only safe pause.
 - **Heartbeats** are events stamped `source: system`; the coordinator accepts that for `HEARTBEAT` only.
@@ -115,4 +114,4 @@ payloads captured from a live Claude Code session (capturing real ones is still 
 - **Hook timeouts** in `.claude/settings.local.json` are whole seconds (the docs list integers); the
   300 ms PreToolUse budget is enforced by the hook process's own IPC timeout.
 
-See `CLAUDE.md` (repo layout, hard rules) and `spec.md` (source of truth).
+See [`spec.md`](../../spec.md) for architecture and protocol behavior.

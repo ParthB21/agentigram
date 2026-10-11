@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { PayloadType } from './payloads.js';
 
 /**
- * Dashboard-only payload types (CLAUDE.md rule 5). Agents never see persona dialogue or markets.
+ * Dashboard-only payload types. Agents never see persona dialogue or markets.
  * Ported idea: OpenAgents' `EventVisibility` levels, collapsed to the two audiences we have.
  */
 export const DASHBOARD_ONLY_TYPES = [

@@ -31,7 +31,7 @@ export type SubmitOutcome =
 /**
  * The room, minus the transport: assigns `seq`, dedupes by client id, authorises, runs the pure
  * reducer, persists, and answers HELLO. The Durable Object is a thin adapter over this, and this
- * is what the tests drive. Every input is untrusted (CLAUDE.md rule 2).
+ * is what the tests drive. Every input is untrusted.
  */
 export class RoomCore {
   private state: RoomState;

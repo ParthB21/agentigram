@@ -47,7 +47,7 @@ export type ToolCall = {
   [N in McpToolName]: { name: N; args: import('zod').infer<(typeof McpToolInputs)[N]> };
 }[McpToolName];
 
-/** Validates an untrusted `tools/call` request with the protocol's schema (CLAUDE.md rule 2). */
+/** Validates an untrusted `tools/call` request with the protocol's schema. */
 export function parseToolCall(name: string, args: unknown): ToolCall {
   if (!(MCP_TOOL_NAMES as string[]).includes(name))
     throw new ValidationError(`unknown tool: ${name}`);

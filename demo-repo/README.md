@@ -79,4 +79,4 @@ Reads `src/security/middleware.ts` and `src/auth/token.ts`.
   exist here. Part 3 does not own the simulator; the owner should point it at
   `src/checkout/view-model.ts`.
 - The repo is a member of the root pnpm workspace and has no lockfile of its own. If the speculative-merge
-  worker needs a standalone clone with a pinned lockfile, generate one then (CLAUDE.md allows this one).
+  worker needs a standalone clone with a pinned lockfile, generate one then.
