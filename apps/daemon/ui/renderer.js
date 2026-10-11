@@ -79,13 +79,10 @@ const room = {
   tiles: new Map(),
   seen: new Set(),
   speechStates: new Map(),
-  frames: [],
-  dialogueFrames: [],
   speechFloor: null,
   captions: true,
   focusLayout: false,
   startedAt: Date.now(),
-  currentCollision: null,
 };
 
 const speech = new SpeechQueue({
@@ -136,19 +133,12 @@ function applyEvent(frame) {
   // heartbeats and the events worth reading scroll away between them. Presence still comes
   // from the room state, which is where the online count and the idle rows are read from.
   if (ACTIVITY_HIDDEN.has(frame.eventType)) return;
-  room.frames.push(frame);
-  if (room.frames.length > MAX_ACTIVITY) room.frames.splice(0, room.frames.length - MAX_ACTIVITY);
-
   const activityNode = createActivityLine(frame);
   elements.feed.append(activityNode);
   trimChildren(elements.feed, MAX_ACTIVITY);
   elements.feed.parentElement.scrollTop = elements.feed.parentElement.scrollHeight;
 
   if (frame.speech) {
-    room.dialogueFrames.push(frame);
-    if (room.dialogueFrames.length > MAX_DIALOGUE) {
-      room.dialogueFrames.splice(0, room.dialogueFrames.length - MAX_DIALOGUE);
-    }
     const agent = room.state?.agents?.find((candidate) => candidate.sessionId === speakerForFrame(frame));
     const line = createDialogueLine(frame, agent);
     elements.dialogue.append(line);
@@ -175,7 +165,7 @@ function renderHeader(state) {
   const connectionText = connected ? 'Connected' : state.transport || 'Offline';
   if (state.projectName) elements.projectName.textContent = `Working in ${state.projectName}`;
   elements.link.className = `connection-pill ${connected ? 'connected' : 'offline'}`;
-  elements.link.lastElementChild.textContent = titleCase(connectionText);
+  elements.link.lastElementChild.textContent = displayName(connectionText);
 
   const summary = state.summary;
   const agentCount = (state.agents ?? []).length;
@@ -228,7 +218,6 @@ function renderAgents() {
 
 function renderCollision(state) {
   const collision = latestCollision(state);
-  room.currentCollision = collision ?? null;
   const hasCollision = Boolean(collision);
   elements.collisionBanner.hidden = !hasCollision;
   elements.collisionPanel.hidden = !hasCollision;
@@ -238,7 +227,7 @@ function renderCollision(state) {
   const affected = [collision.writerSession, ...(collision.affectedSessions ?? [])];
   const people = affected.map(displayName).join(' and ');
   const symbols = (collision.symbols ?? []).map(symbolName).join(', ');
-  const tier = `${titleCase(String(collision.tier || 'collision').toLowerCase().replaceAll('_', ' '))} conflict`;
+  const tier = `${displayName(String(collision.tier || 'collision').toLowerCase())} conflict`;
   const negotiation = negotiationFor(state, collision.collisionId);
   const contract = negotiation?.contract;
 
@@ -411,10 +400,4 @@ function startClock() {
 
 function trimChildren(parent, maximum) {
   while (parent.childElementCount > maximum) parent.firstElementChild?.remove();
-}
-
-function titleCase(value) {
-  return String(value)
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, (character) => character.toUpperCase());
 }

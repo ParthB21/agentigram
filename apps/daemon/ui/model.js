@@ -114,20 +114,9 @@ export function frameCategory(eventType) {
   return 'normal';
 }
 
-export function conciseEventText(frame) {
-  const raw = String(frame?.text ?? '').replace(/^#\d+\s+/, '');
-  const type = String(frame?.eventType ?? 'EVENT');
-  const withoutType = raw.replace(new RegExp(`\\s${escapeRegExp(type)}\\s?`, 'i'), ' - ');
-  return withoutType || type.toLowerCase().replaceAll('_', ' ');
-}
-
 export function clockTime(value = Date.now()) {
   return new Intl.DateTimeFormat(undefined, {
     hour: '2-digit',
     minute: '2-digit',
   }).format(value);
-}
-
-function escapeRegExp(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

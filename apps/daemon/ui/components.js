@@ -1,4 +1,4 @@
-import { agentBrand, clockTime, frameCategory, initials, speakerForFrame } from './model.js';
+import { agentBrand, clockTime, displayName, frameCategory, initials, speakerForFrame } from './model.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
@@ -108,7 +108,7 @@ export function createDialogueLine(frame, agent) {
   updateAvatar(avatar, agentBrand(agent), initials(speaker));
   const body = element('div', 'dialogue-body');
   const meta = element('div', 'dialogue-meta');
-  meta.append(element('strong', '', titleCase(speaker)), element('time', '', clockTime()));
+  meta.append(element('strong', '', displayName(speaker)), element('time', '', clockTime()));
   body.append(meta, element('div', 'dialogue-bubble', frame.speech?.text || frame.text || ''));
   item.append(avatar, body);
   return item;
@@ -209,11 +209,4 @@ function updateAvatar(avatar, brand, fallback) {
 
 function displayBrand(brand) {
   return brand === 'claude' ? 'Claude' : brand === 'codex' ? 'Codex' : 'Gemini';
-}
-
-function titleCase(value) {
-  return String(value)
-    .split(/[\s_-]+/)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
 }
