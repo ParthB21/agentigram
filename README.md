@@ -12,6 +12,22 @@ Agentigram is a coordination layer for coding agents running on different engine
 observes what each agent reads and writes, works out which uncommitted changes would break each
 other, has the agents negotiate a contract, compiles that contract into a check, and enforces it.
 
+## Screenshots
+
+These native desktop screenshots show the local TestProject demo scenario.
+
+### Agent room
+
+Agent status, dialogue and a predicted conflict over the User.id contract.
+
+<img width="1200" alt="Agentigram desktop room with Claude, Codex and Gemini agents and a predicted conflict" src="docs/screenshots/room.jpg" />
+
+### Room activity
+
+Inspect the structured event history alongside the proposed contract.
+
+<img width="1200" alt="Agentigram activity tab showing trade, message and proposal events" src="docs/screenshots/activity.jpg" />
+
 ## Sovereign by design
 
 There is no server to trust, rent or lose. Everything runs on the laptops in the room.
