@@ -16,6 +16,4 @@ contextBridge.exposeInMainWorld('agentigram', {
     ipcRenderer.on('agentigram:frame', listener);
     return () => ipcRenderer.removeListener('agentigram:frame', listener);
   },
-  setVoiceSettings: (settings) => ipcRenderer.invoke('agentigram:set-voice', settings),
-  openDashboard: () => ipcRenderer.invoke('agentigram:open-dashboard'),
 });

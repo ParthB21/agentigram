@@ -40,24 +40,12 @@ export class SpeechQueue {
   setVolume(volume) {
     this.settings.volume = clamp(Number(volume), 0, 1);
     persist(this.settings);
-    window.agentigram
-      ?.setVoiceSettings({
-        enabled: this.settings.mode !== 'off',
-        volume: this.settings.volume,
-      })
-      .catch(() => {});
   }
 
   setMode(mode) {
     if (!MODES.includes(mode)) return;
     this.settings.mode = mode;
     persist(this.settings);
-    window.agentigram
-      ?.setVoiceSettings({
-        enabled: mode !== 'off',
-        volume: this.settings.volume,
-      })
-      .catch(() => {});
     if (mode === 'off') this.cancel();
   }
 

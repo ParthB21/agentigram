@@ -44,7 +44,6 @@ globalThis.window = {
   SpeechSynthesisUtterance: Utterance,
   speechSynthesis: synthesizer,
   setTimeout,
-  agentigram: { setVoiceSettings: async () => ({ enabled: true, volume: 0.8 }) },
 };
 globalThis.SpeechSynthesisUtterance = Utterance;
 
@@ -156,6 +155,28 @@ test('authority voices the room while peers default to their local agent', async
   assert.equal(queue.isMuted('agentigram'), false);
   queue.setVoiceAll(true);
   assert.equal(queue.isMuted('payments'), false);
+});
+
+test('voice controls apply to playback and persist without a main-process bridge', async () => {
+  storage.clear();
+  const { SpeechQueue } = await import('./speech.js');
+  const queue = new SpeechQueue();
+  queue.setLocalSession('backend');
+  queue.setVolume(0.35);
+  queue.enqueue({ seq: 30, speaker: 'backend', text: 'A local voice setting', priority: 0 });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(synthesizer.active.volume, 0.35);
+  queue.setMode('off');
+  assert.equal(synthesizer.active, null);
+  assert.equal(queue.current, null);
+  assert.equal(queue.enqueue({ seq: 31, speaker: 'backend', text: 'Muted', priority: 0 }), false);
+
+  const restored = new SpeechQueue();
+  assert.equal(restored.volume, 0.35);
+  assert.equal(restored.mode, 'off');
+  queue.close();
+  restored.close();
 });
 
 test('urgent speech interrupts routine playback', async () => {

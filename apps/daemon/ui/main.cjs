@@ -5,13 +5,12 @@ const { existsSync, readFileSync, readdirSync, statSync } = require('node:fs');
 const { createConnection } = require('node:net');
 const { homedir } = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain } = require('electron');
 
 const STATUS_INTERVAL_MS = 1_000;
 const IPC_TIMEOUT_MS = 1_000;
 const RESUBSCRIBE_MS = 1_000;
 let root = path.resolve(process.env.AGENTIGRAM_ROOT || process.cwd());
-let voiceSettings = { enabled: true, volume: 0.8 };
 let statusTimer;
 let stream = null;
 let resubscribeTimer = null;
@@ -254,25 +253,6 @@ function createWindow() {
 ipcMain.handle('agentigram:get-status', (event) =>
   trusted(event) ? status() : Promise.reject(new Error('untrusted renderer')),
 );
-ipcMain.handle('agentigram:set-voice', (event, settings) => {
-  if (!trusted(event)) throw new Error('untrusted renderer');
-  if (
-    !settings ||
-    typeof settings.enabled !== 'boolean' ||
-    typeof settings.volume !== 'number' ||
-    settings.volume < 0 ||
-    settings.volume > 1
-  ) {
-    throw new Error('invalid voice settings');
-  }
-  voiceSettings = { enabled: settings.enabled, volume: settings.volume };
-  return voiceSettings;
-});
-ipcMain.handle('agentigram:open-dashboard', async (event) => {
-  if (!trusted(event)) throw new Error('untrusted renderer');
-  await shell.openExternal('http://localhost:3000');
-});
-
 app.whenReady().then(() => {
   createWindow();
   subscribe();
