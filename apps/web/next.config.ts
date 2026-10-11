@@ -4,6 +4,7 @@ const githubPagesEnabled = process.env.GITHUB_PAGES === 'true';
 const githubPagesBasePath = '/agentigram';
 
 const config: NextConfig = {
+  agentRules: false,
   ...(githubPagesEnabled
     ? {
         output: 'export' as const,
